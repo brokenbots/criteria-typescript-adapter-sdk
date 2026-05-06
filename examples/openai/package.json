@@ -1,0 +1,16 @@
+{
+  "name": "criteria-adapter-openai-example",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --compile index.ts --outfile criteria-adapter-openai",
+    "build:linux-x64": "bun build --compile --target=bun-linux-x64 index.ts --outfile criteria-adapter-openai",
+    "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 index.ts --outfile criteria-adapter-openai",
+    "build:darwin-arm64": "bun build --compile --target=bun-darwin-arm64 index.ts --outfile criteria-adapter-openai",
+    "clean": "rm -f criteria-adapter-openai"
+  },
+  "dependencies": {
+    "@criteria/adapter-sdk": "file:../..",
+    "openai": "^4.85.0"
+  }
+}

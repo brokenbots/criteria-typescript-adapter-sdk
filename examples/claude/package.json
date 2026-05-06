@@ -1,0 +1,16 @@
+{
+  "name": "criteria-adapter-claude-example",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --compile index.ts --outfile criteria-adapter-claude",
+    "build:linux-x64": "bun build --compile --target=bun-linux-x64 index.ts --outfile criteria-adapter-claude",
+    "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 index.ts --outfile criteria-adapter-claude",
+    "build:darwin-arm64": "bun build --compile --target=bun-darwin-arm64 index.ts --outfile criteria-adapter-claude",
+    "clean": "rm -f criteria-adapter-claude"
+  },
+  "dependencies": {
+    "@criteria/adapter-sdk": "file:../..",
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
+}

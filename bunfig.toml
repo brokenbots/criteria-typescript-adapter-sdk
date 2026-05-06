@@ -1,0 +1,15 @@
+[install]
+# Use the default registry
+registry = "https://registry.npmjs.org"
+
+[run]
+# Enable watch mode by default for bun run --watch
+# This is useful for development
+
+[compile]
+# Default compile target
+# Can be overridden with --target flag
+target = "bun"
+
+# Minification options
+minify = true

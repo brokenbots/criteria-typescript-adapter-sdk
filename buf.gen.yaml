@@ -1,0 +1,22 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      value: github.com/brokenbots/criteria/sdk/pb/criteria/v1;criteriav1
+
+inputs:
+  - directory: ../criteria/proto
+
+plugins:
+  - local: protoc-gen-es
+    out: src/proto
+    opt:
+      - target=ts
+      - import_extension=.js
+
+  - local: protoc-gen-connect-es
+    out: src/proto
+    opt:
+      - target=ts
+      - import_extension=.js

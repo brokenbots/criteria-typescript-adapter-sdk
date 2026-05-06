@@ -1,0 +1,75 @@
+{
+  "name": "@criteria/adapter-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Criteria adapter plugins - enables building workflow adapters in TypeScript",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "proto/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "proto:generate": "buf generate ../criteria/proto",
+    "proto:lint": "buf lint ../criteria/proto",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "lint": "eslint src/**/*.ts",
+    "format": "prettier --write src/**/*.ts",
+    "clean": "rm -rf dist/",
+    "example:greeter:build": "bun build --compile --target=bun-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/x64/' | sed 's/aarch64/arm64/') examples/greeter/index.ts --outfile examples/greeter/criteria-adapter-greeter",
+    "example:greeter:run": "./examples/greeter/criteria-adapter-greeter"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.13",
+    "long": "^5.2.3",
+    "protobufjs": "^7.4.0"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.50.0",
+    "@bufbuild/protobuf": "^2.2.5",
+    "@bufbuild/protoc-gen-es": "^2.2.5",
+    "@connectrpc/protoc-gen-connect-es": "^1.6.1",
+    "@types/bun": "^1.2.0",
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "eslint": "^9.17.0",
+    "typescript-eslint": "^8.20.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0",
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "criteria",
+    "workflow",
+    "adapter",
+    "plugin",
+    "grpc",
+    "go-plugin",
+    "typescript"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brokenbots/criteria-typescript-sdk.git"
+  }
+}

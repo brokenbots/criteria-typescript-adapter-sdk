@@ -1,0 +1,15 @@
+{
+  "name": "criteria-adapter-greeter-example",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --compile index.ts --outfile criteria-adapter-greeter",
+    "build:linux-x64": "bun build --compile --target=bun-linux-x64 index.ts --outfile criteria-adapter-greeter",
+    "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 index.ts --outfile criteria-adapter-greeter",
+    "build:darwin-arm64": "bun build --compile --target=bun-darwin-arm64 index.ts --outfile criteria-adapter-greeter",
+    "clean": "rm -f criteria-adapter-greeter"
+  },
+  "dependencies": {
+    "@criteria/adapter-sdk": "file:../.."
+  }
+}
