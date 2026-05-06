@@ -4,7 +4,7 @@
 .PHONY: all build install clean test lint proto help
 
 # Default target - build everything
-all: build
+all: install-codex install-claude-code
 
 # Detect platform for native build
 UNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -99,6 +99,9 @@ install-codex: ## Build and install the codex example
 install-claude: ## Build and install the claude example
 	@$(MAKE) ADAPTER_NAME=claude install
 
+install-claude-code: ## Build and install the claude-code example
+	@$(MAKE) ADAPTER_NAME=claude-code install
+
 clean: ## Remove build artifacts
 	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
 	@rm -rf dist/
@@ -106,6 +109,7 @@ clean: ## Remove build artifacts
 	@rm -f examples/openai/criteria-adapter-openai
 	@rm -f examples/codex/criteria-adapter-codex
 	@rm -f examples/claude/criteria-adapter-claude
+	@rm -f examples/claude-code/criteria-adapter-claude-code
 	@echo "$(GREEN)Clean complete$(NC)"
 
 test: ## Run tests

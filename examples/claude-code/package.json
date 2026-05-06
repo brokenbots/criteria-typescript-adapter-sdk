@@ -13,5 +13,8 @@
     "@criteria/adapter-sdk": "file:../..",
     "@anthropic-ai/claude-agent-sdk": "^0.2.128",
     "zod": "^4.0.0"
-  }
+  },
+  "trustedDependencies": [
+    "protobufjs"
+  ]
 }

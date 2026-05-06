@@ -355,6 +355,9 @@ When you are done, call the submit_outcome tool with one of these outcomes: ${re
         : undefined,
       env: {
         CLAUDE_AGENT_SDK_CLIENT_APP: 'criteria-adapter-claude-code/0.1.0',
+        ANTHROPIC_AUTH_TOKEN: (req.config as any).auth_token || process.env.ANTHROPIC_AUTH_TOKEN,
+        ANTHROPIC_API_KEY: (req.config as any).api_key || process.env.ANTHROPIC_API_KEY,
+        ANTHROPIC_BASE_URL: (req.config as any).base_url || process.env.ANTHROPIC_BASE_URL,
       },
     },
   });
@@ -409,6 +412,9 @@ serve({
       cwd: { type: 'string', required: false, doc: 'Working directory for the agent. Defaults to process.cwd().' },
       system_prompt: { type: 'string', required: false, doc: 'Custom system prompt prepended to every execute call' },
       thinking: { type: 'bool', required: false, doc: 'Enable adaptive thinking mode' },
+      auth_token: { type: 'string', required: false, doc: 'Value for ANTHROPIC_AUTH_TOKEN' },
+      api_key: { type: 'string', required: false, doc: 'Value for ANTHROPIC_API_KEY' },
+      base_url: { type: 'string', required: false, doc: 'Value for ANTHROPIC_BASE_URL' },
     },
   },
 
