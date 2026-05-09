@@ -69,6 +69,18 @@ export interface LogEvent {
 }
 
 /**
+ * AdapterEvent - Adapter-specific structured event (from events.proto).
+ * Emitted inside ExecuteEvent.adapter during Execute streaming.
+ * `data` corresponds to google.protobuf.Struct (a JSON object).
+ */
+export interface AdapterEvent {
+  step?: string;
+  adapter?: string;
+  kind: string;
+  data?: Record<string, unknown>;
+}
+
+/**
  * PermissionRequest - Request for user permission.
  */
 export interface PermissionRequest {
@@ -90,7 +102,7 @@ export interface ExecuteResult {
  */
 export interface ExecuteEvent {
   log?: LogEvent;
-  adapter?: unknown; // Opaque adapter-specific event
+  adapter?: AdapterEvent;
   permission?: PermissionRequest;
   result?: ExecuteResult;
 }

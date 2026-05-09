@@ -55,10 +55,11 @@ export interface EventSender {
   log(stream: 'stdout' | 'stderr', chunk: string | Uint8Array): Promise<void>;
   
   /**
-   * Send an adapter-specific event.
-   * @param event - Opaque event data
+   * Send an adapter-specific structured event.
+   * @param kind - Event kind discriminator (e.g. "tool.invocation")
+   * @param data - Opaque JSON-serialisable payload (should be an object)
    */
-  adapterEvent(event: unknown): Promise<void>;
+  adapterEvent(kind: string, data?: Record<string, unknown>): Promise<void>;
   
   /**
    * Request permission from the host.

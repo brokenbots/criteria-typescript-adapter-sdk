@@ -6,11 +6,13 @@
  */
 
 import './long-polyfill.js';
+import * as fs from 'fs';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import type { INamespace } from 'protobufjs';
 import type { AdapterService, EventSender } from './types.js';
-import protoJson from '../proto/criteria/v1/adapter_plugin.json' assert { type: 'json' };
+import protoJson from '../proto/criteria/v1/adapter_plugin.json' with { type: 'json' };
+import type { AdapterEvent } from '../proto/criteria/v1/adapter_plugin.js';
 import type {
   InfoRequest,
   InfoResponse,
@@ -28,6 +30,39 @@ import type {
 /**
  * Internal implementation of EventSender for streaming events.
  */
+
+/** Convert a plain JS value to proto-loader's google.protobuf.Value wire format. */
+function toProtoValue(value: unknown): object {
+  if (value === null || value === undefined) {
+    return { nullValue: 0 };
+  }
+  if (typeof value === 'boolean') {
+    return { boolValue: value };
+  }
+  if (typeof value === 'number') {
+    return { numberValue: value };
+  }
+  if (typeof value === 'string') {
+    return { stringValue: value };
+  }
+  if (Array.isArray(value)) {
+    return { listValue: { values: value.map(toProtoValue) } };
+  }
+  if (typeof value === 'object') {
+    return { structValue: toProtoStruct(value as Record<string, unknown>) };
+  }
+  return { stringValue: String(value) };
+}
+
+/** Convert a plain JS object to proto-loader's google.protobuf.Struct wire format. */
+function toProtoStruct(obj: Record<string, unknown>): object {
+  const fields: Record<string, object> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    fields[k] = toProtoValue(v);
+  }
+  return { fields };
+}
+
 class EventSenderImpl implements EventSender {
   private call: grpc.ServerWritableStream<ExecuteRequest, ExecuteEvent>;
   private hasSentResult = false;
@@ -49,9 +84,10 @@ class EventSenderImpl implements EventSender {
     this.call.write(event);
   }
 
-  async adapterEvent(event: unknown): Promise<void> {
+  async adapterEvent(kind: string, data?: Record<string, unknown>): Promise<void> {
+    const evt: AdapterEvent = { kind, ...(data !== undefined ? { data: toProtoStruct(data) as any } : {}) };
     const executeEvent: ExecuteEvent = {
-      adapter: event,
+      adapter: evt,
     };
     this.call.write(executeEvent);
   }
@@ -126,12 +162,12 @@ function loadProtoService(): grpc.GrpcObject {
 /**
  * Create the gRPC service implementation from an adapter service.
  */
-function createServiceImplementation(service: AdapterService): grpc.UntypedServiceImplementation {
+function createServiceImplementation(service: AdapterService, onShutdown: () => void): grpc.UntypedServiceImplementation {
   return {
     // Info - unary RPC
     Info: (_call: grpc.ServerUnaryCall<InfoRequest, InfoResponse>, callback: grpc.sendUnaryData<InfoResponse>) => {
       service.info()
-        .then((response) => callback(null, response))
+        .then((response) => { callback(null, response); onShutdown(); })
         .catch((err) => callback(err as Error));
     },
 
@@ -156,6 +192,11 @@ function createServiceImplementation(service: AdapterService): grpc.UntypedServi
         })
         .catch((err) => {
           call.emit('error', err);
+        })
+        .finally(() => {
+          // Wait for the stream to fully close (response flushed to host) before
+          // initiating shutdown so go-plugin can read the final result first.
+          call.once('close', onShutdown);
         });
     },
 
@@ -253,47 +294,67 @@ export function startServer(service: AdapterService, options: ServerOptions = {}
             responseDeserialize: (arg: Buffer) => JSON.parse(arg.toString()),
           },
         };
-        server.addService(manualServiceDef, createServiceImplementation(service));
+        server.addService(manualServiceDef, createServiceImplementation(service, () => {
+          // go-plugin closes the gRPC connection after Execute and waits 2s for
+          // the plugin to exit naturally. Shut down and exit so we beat the SIGKILL.
+          server.tryShutdown(() => process.exit(0));
+        }));
       } else {
-        server.addService(serviceDef, createServiceImplementation(service));
+        server.addService(serviceDef, createServiceImplementation(service, () => {
+          server.tryShutdown(() => process.exit(0));
+        }));
       }
     } catch (err) {
       reject(err);
       return;
     }
     
-    // Determine bind address
+    // Determine bind address and go-plugin handshake info
     let bindAddress: string;
-    
+    let handshakeNetwork: string;
+    let handshakeAddress: string;
+
     if (unixSocket) {
-      // Unix socket is preferred for local communication
+      // Unix socket is preferred for local communication.
+      // Remove stale socket file from a previous crashed run.
+      try { fs.unlinkSync(unixSocket); } catch { /* not present, that's fine */ }
       bindAddress = `unix:${unixSocket}`;
+      handshakeNetwork = 'unix';
+      handshakeAddress = unixSocket;
     } else if (tcpPort) {
       // TCP fallback
       bindAddress = `0.0.0.0:${tcpPort}`;
+      handshakeNetwork = 'tcp';
+      handshakeAddress = `127.0.0.1:${tcpPort}`;
     } else if (options.address) {
       // User-specified address
       bindAddress = options.address;
+      handshakeNetwork = 'tcp';
+      handshakeAddress = options.address;
     } else {
-      // Default to stdio for testing
+      // Default for testing
       bindAddress = '127.0.0.1:50051';
+      handshakeNetwork = 'tcp';
+      handshakeAddress = '127.0.0.1:50051';
     }
-    
+
     server.bindAsync(bindAddress, grpc.ServerCredentials.createInsecure(), (err, port) => {
       if (err) {
         reject(err);
         return;
       }
-      
+
       if (options.debug) {
         console.error(`gRPC server listening on ${bindAddress} (port ${port})`);
       }
-      
-      // go-plugin expects the port on stdout for TCP connections
-      if (tcpPort && !unixSocket) {
-        console.log(port);
+
+      // go-plugin handshake: CORE-VERSION|APP-VERSION|NETWORK|ADDRESS|PROTOCOL|
+      // The host reads this line from stdout to discover where the plugin is listening.
+      if (handshakeNetwork === 'tcp') {
+        handshakeAddress = `127.0.0.1:${port}`;
       }
-      
+      process.stdout.write(`1|1|${handshakeNetwork}|${handshakeAddress}|grpc|\n`);
+
       resolve(server);
     });
   });

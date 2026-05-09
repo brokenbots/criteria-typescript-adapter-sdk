@@ -1,6 +1,6 @@
 {
   "name": "@criteria/adapter-sdk",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "TypeScript SDK for Criteria adapter plugins - enables building workflow adapters in TypeScript",
   "type": "module",
   "main": "./dist/index.js",

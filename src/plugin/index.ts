@@ -56,6 +56,7 @@ export type {
 export type {
   ConfigFieldProto as ConfigField,
   AdapterSchemaProto as AdapterSchema,
+  AdapterEvent,
   ExecuteResult,
   ExecuteEvent,
   LogEvent,
@@ -146,16 +147,17 @@ export async function serve(config: SimpleAdapterConfig): Promise<void> {
   
   // Convert and start
   const service = toAdapterService(config);
-  await startServer(service);
-  
+  const server = await startServer(service);
+
+  // Exit immediately on SIGTERM/SIGINT — go-plugin has a short grace window
+  process.once('SIGTERM', () => { server.forceShutdown(); process.exit(0); });
+  process.once('SIGINT',  () => { server.forceShutdown(); process.exit(0); });
+
   // Keep process alive
-  // The server handles shutdown via go-plugin signals
   await new Promise(() => {});
 }
 
 /**
- * Serve a full AdapterService implementation.
- * 
  * Use this when you need more control over the service lifecycle or want
  * to implement custom session management.
  * 
@@ -175,8 +177,12 @@ export async function serveAdapter(service: AdapterService): Promise<void> {
   validateAndExitOnFailure();
   
   // Start server
-  await startServer(service);
-  
+  const server = await startServer(service);
+
+  // Exit immediately on SIGTERM/SIGINT — go-plugin has a short grace window
+  process.once('SIGTERM', () => { server.forceShutdown(); process.exit(0); });
+  process.once('SIGINT',  () => { server.forceShutdown(); process.exit(0); });
+
   // Keep process alive
   await new Promise(() => {});
 }

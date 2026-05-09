@@ -50,5 +50,5 @@ done
 // Re-export everything from the plugin module
 export * from './plugin/index.js';
 
-// Version constant
-export const SDK_VERSION = '0.1.0';
+// Version constant — matches criteria SDK v0.3.0
+export const SDK_VERSION = '0.3.0';
