@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file criteria/v1/server.proto.
  */
 export const file_criteria_v1_server: GenFile = /*@__PURE__*/
-  fileDesc("Chhjcml0ZXJpYS92MS9zZXJ2ZXIucHJvdG8SC2NyaXRlcmlhLnYxIv4BCgVBZ2VudBITCgtjcml0ZXJpYV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEi4KBmxhYmVscxgDIAMoCzIeLmNyaXRlcmlhLnYxLkFnZW50LkxhYmVsc0VudHJ5Eg4KBnN0YXR1cxgEIAEoCRIxCg1yZWdpc3RlcmVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIwCgxsYXN0X3NlZW5fYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wGi0KC0xhYmVsc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiNgoRTGlzdEFnZW50c1JlcXVlc3QSDQoFbGltaXQYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJRChJMaXN0QWdlbnRzUmVzcG9uc2USIgoGYWdlbnRzGAEgAygLMhIuY3JpdGVyaWEudjEuQWdlbnQSFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIiYKD0dldEFnZW50UmVxdWVzdBITCgtjcml0ZXJpYV9pZBgBIAEoCSJZCg9MaXN0UnVuc1JlcXVlc3QSEwoLY3JpdGVyaWFfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEg0KBWxpbWl0GAMgASgFEhIKCnBhZ2VfdG9rZW4YBCABKAkiSwoQTGlzdFJ1bnNSZXNwb25zZRIeCgRydW5zGAEgAygLMhAuY3JpdGVyaWEudjEuUnVuEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIfCg1HZXRSdW5SZXF1ZXN0Eg4KBnJ1bl9pZBgBIAEoCSJIChRMaXN0UnVuRXZlbnRzUmVxdWVzdBIOCgZydW5faWQYASABKAkSEQoJc2luY2Vfc2VxGAIgASgEEg0KBWxpbWl0GAMgASgFImgKFUxpc3RSdW5FdmVudHNSZXNwb25zZRIlCgZldmVudHMYASADKAsyFS5jcml0ZXJpYS52MS5FbnZlbG9wZRIQCghsYXN0X3NlcRgCIAEoBBIWCg5uZXh0X3NpbmNlX3NlcRgDIAEoBCJLCg9XYXRjaFJ1blJlcXVlc3QSDgoGcnVuX2lkGAEgASgJEhEKCXNpbmNlX3NlcRgCIAEoBBIVCg1zdWJzY3JpYmVyX2lkGAMgASgJIjAKDlN0b3BSdW5SZXF1ZXN0Eg4KBnJ1bl9pZBgBIAEoCRIOCgZyZWFzb24YAiABKAkiQAoPU3RvcFJ1blJlc3BvbnNlEi0KCWlzc3VlZF9hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiQQoRU2VuZFByb21wdFJlcXVlc3QSDgoGcnVuX2lkGAEgASgJEgwKBHN0ZXAYAiABKAkSDgoGcHJvbXB0GAMgASgJIkMKElNlbmRQcm9tcHRSZXNwb25zZRItCglpc3N1ZWRfYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wMs0ECg1TZXJ2ZXJTZXJ2aWNlEk0KCkxpc3RBZ2VudHMSHi5jcml0ZXJpYS52MS5MaXN0QWdlbnRzUmVxdWVzdBofLmNyaXRlcmlhLnYxLkxpc3RBZ2VudHNSZXNwb25zZRI8CghHZXRBZ2VudBIcLmNyaXRlcmlhLnYxLkdldEFnZW50UmVxdWVzdBoSLmNyaXRlcmlhLnYxLkFnZW50EkcKCExpc3RSdW5zEhwuY3JpdGVyaWEudjEuTGlzdFJ1bnNSZXF1ZXN0Gh0uY3JpdGVyaWEudjEuTGlzdFJ1bnNSZXNwb25zZRI2CgZHZXRSdW4SGi5jcml0ZXJpYS52MS5HZXRSdW5SZXF1ZXN0GhAuY3JpdGVyaWEudjEuUnVuElYKDUxpc3RSdW5FdmVudHMSIS5jcml0ZXJpYS52MS5MaXN0UnVuRXZlbnRzUmVxdWVzdBoiLmNyaXRlcmlhLnYxLkxpc3RSdW5FdmVudHNSZXNwb25zZRJBCghXYXRjaFJ1bhIcLmNyaXRlcmlhLnYxLldhdGNoUnVuUmVxdWVzdBoVLmNyaXRlcmlhLnYxLkVudmVsb3BlMAESRAoHU3RvcFJ1bhIbLmNyaXRlcmlhLnYxLlN0b3BSdW5SZXF1ZXN0GhwuY3JpdGVyaWEudjEuU3RvcFJ1blJlc3BvbnNlEk0KClNlbmRQcm9tcHQSHi5jcml0ZXJpYS52MS5TZW5kUHJvbXB0UmVxdWVzdBofLmNyaXRlcmlhLnYxLlNlbmRQcm9tcHRSZXNwb25zZUKpAQoPY29tLmNyaXRlcmlhLnYxQgtTZXJ2ZXJQcm90b1ABWjxnaXRodWIuY29tL2Jyb2tlbmJvdHMvY3JpdGVyaWEvc2RrL3BiL2NyaXRlcmlhL3YxO2NyaXRlcmlhdjGiAgNDWFiqAgtDcml0ZXJpYS5WMcoCC0NyaXRlcmlhXFYx4gIXQ3JpdGVyaWFcVjFcR1BCTWV0YWRhdGHqAgxDcml0ZXJpYTo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_criteria_v1_events, file_criteria_v1_criteria]);
+  fileDesc("Chhjcml0ZXJpYS92MS9zZXJ2ZXIucHJvdG8SC2NyaXRlcmlhLnYxIv4BCgVBZ2VudBITCgtjcml0ZXJpYV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEi4KBmxhYmVscxgDIAMoCzIeLmNyaXRlcmlhLnYxLkFnZW50LkxhYmVsc0VudHJ5Eg4KBnN0YXR1cxgEIAEoCRIxCg1yZWdpc3RlcmVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIwCgxsYXN0X3NlZW5fYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wGi0KC0xhYmVsc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiNgoRTGlzdEFnZW50c1JlcXVlc3QSDQoFbGltaXQYASABKAUSEgoKcGFnZV90b2tlbhgCIAEoCSJRChJMaXN0QWdlbnRzUmVzcG9uc2USIgoGYWdlbnRzGAEgAygLMhIuY3JpdGVyaWEudjEuQWdlbnQSFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIiYKD0dldEFnZW50UmVxdWVzdBITCgtjcml0ZXJpYV9pZBgBIAEoCSJZCg9MaXN0UnVuc1JlcXVlc3QSEwoLY3JpdGVyaWFfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEg0KBWxpbWl0GAMgASgFEhIKCnBhZ2VfdG9rZW4YBCABKAkiSwoQTGlzdFJ1bnNSZXNwb25zZRIeCgRydW5zGAEgAygLMhAuY3JpdGVyaWEudjEuUnVuEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIfCg1HZXRSdW5SZXF1ZXN0Eg4KBnJ1bl9pZBgBIAEoCSJIChRMaXN0UnVuRXZlbnRzUmVxdWVzdBIOCgZydW5faWQYASABKAkSEQoJc2luY2Vfc2VxGAIgASgEEg0KBWxpbWl0GAMgASgFImgKFUxpc3RSdW5FdmVudHNSZXNwb25zZRIlCgZldmVudHMYASADKAsyFS5jcml0ZXJpYS52MS5FbnZlbG9wZRIQCghsYXN0X3NlcRgCIAEoBBIWCg5uZXh0X3NpbmNlX3NlcRgDIAEoBCJLCg9XYXRjaFJ1blJlcXVlc3QSDgoGcnVuX2lkGAEgASgJEhEKCXNpbmNlX3NlcRgCIAEoBBIVCg1zdWJzY3JpYmVyX2lkGAMgASgJIjAKDlN0b3BSdW5SZXF1ZXN0Eg4KBnJ1bl9pZBgBIAEoCRIOCgZyZWFzb24YAiABKAkiQAoPU3RvcFJ1blJlc3BvbnNlEi0KCWlzc3VlZF9hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQoPUGF1c2VSdW5SZXF1ZXN0Eg4KBnJ1bl9pZBgBIAEoCSJBChBQYXVzZVJ1blJlc3BvbnNlEi0KCWlzc3VlZF9hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIgoQUmVzdW1lUnVuUmVxdWVzdBIOCgZydW5faWQYASABKAkiQgoRUmVzdW1lUnVuUmVzcG9uc2USLQoJaXNzdWVkX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCI3ChFJbnNwZWN0UnVuUmVxdWVzdBIOCgZydW5faWQYASABKAkSEgoKc2Vzc2lvbl9pZBgCIAEoCSLGAQoSSW5zcGVjdFJ1blJlc3BvbnNlEg4KBnJ1bl9pZBgBIAEoCRISCgpzZXNzaW9uX2lkGAIgASgJEg8KB2FkYXB0ZXIYAyABKAkSFAoMY3VycmVudF9zdGVwGAQgASgJEhsKE3BlbmRpbmdfcGVybWlzc2lvbnMYBSABKAMSNAoQbGFzdF9hY3Rpdml0eV9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEgoKc3RhdGVfanNvbhgHIAEoCSJBChFTZW5kUHJvbXB0UmVxdWVzdBIOCgZydW5faWQYASABKAkSDAoEc3RlcBgCIAEoCRIOCgZwcm9tcHQYAyABKAkiQwoSU2VuZFByb21wdFJlc3BvbnNlEi0KCWlzc3VlZF9hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAysQYKDVNlcnZlclNlcnZpY2USTQoKTGlzdEFnZW50cxIeLmNyaXRlcmlhLnYxLkxpc3RBZ2VudHNSZXF1ZXN0Gh8uY3JpdGVyaWEudjEuTGlzdEFnZW50c1Jlc3BvbnNlEjwKCEdldEFnZW50EhwuY3JpdGVyaWEudjEuR2V0QWdlbnRSZXF1ZXN0GhIuY3JpdGVyaWEudjEuQWdlbnQSRwoITGlzdFJ1bnMSHC5jcml0ZXJpYS52MS5MaXN0UnVuc1JlcXVlc3QaHS5jcml0ZXJpYS52MS5MaXN0UnVuc1Jlc3BvbnNlEjYKBkdldFJ1bhIaLmNyaXRlcmlhLnYxLkdldFJ1blJlcXVlc3QaEC5jcml0ZXJpYS52MS5SdW4SVgoNTGlzdFJ1bkV2ZW50cxIhLmNyaXRlcmlhLnYxLkxpc3RSdW5FdmVudHNSZXF1ZXN0GiIuY3JpdGVyaWEudjEuTGlzdFJ1bkV2ZW50c1Jlc3BvbnNlEkEKCFdhdGNoUnVuEhwuY3JpdGVyaWEudjEuV2F0Y2hSdW5SZXF1ZXN0GhUuY3JpdGVyaWEudjEuRW52ZWxvcGUwARJECgdTdG9wUnVuEhsuY3JpdGVyaWEudjEuU3RvcFJ1blJlcXVlc3QaHC5jcml0ZXJpYS52MS5TdG9wUnVuUmVzcG9uc2USRwoIUGF1c2VSdW4SHC5jcml0ZXJpYS52MS5QYXVzZVJ1blJlcXVlc3QaHS5jcml0ZXJpYS52MS5QYXVzZVJ1blJlc3BvbnNlEkoKCVJlc3VtZVJ1bhIdLmNyaXRlcmlhLnYxLlJlc3VtZVJ1blJlcXVlc3QaHi5jcml0ZXJpYS52MS5SZXN1bWVSdW5SZXNwb25zZRJNCgpJbnNwZWN0UnVuEh4uY3JpdGVyaWEudjEuSW5zcGVjdFJ1blJlcXVlc3QaHy5jcml0ZXJpYS52MS5JbnNwZWN0UnVuUmVzcG9uc2USTQoKU2VuZFByb21wdBIeLmNyaXRlcmlhLnYxLlNlbmRQcm9tcHRSZXF1ZXN0Gh8uY3JpdGVyaWEudjEuU2VuZFByb21wdFJlc3BvbnNlQqkBCg9jb20uY3JpdGVyaWEudjFCC1NlcnZlclByb3RvUAFaPGdpdGh1Yi5jb20vYnJva2VuYm90cy9jcml0ZXJpYS9zZGsvcGIvY3JpdGVyaWEvdjE7Y3JpdGVyaWF2MaICA0NYWKoCC0NyaXRlcmlhLlYxygILQ3JpdGVyaWFcVjHiAhdDcml0ZXJpYVxWMVxHUEJNZXRhZGF0YeoCDENyaXRlcmlhOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp, file_criteria_v1_events, file_criteria_v1_criteria]);
 
 /**
  * @generated from message criteria.v1.Agent
@@ -333,6 +333,147 @@ export const StopRunResponseSchema: GenMessage<StopRunResponse> = /*@__PURE__*/
   messageDesc(file_criteria_v1_server, 11);
 
 /**
+ * @generated from message criteria.v1.PauseRunRequest
+ */
+export type PauseRunRequest = Message<"criteria.v1.PauseRunRequest"> & {
+  /**
+   * @generated from field: string run_id = 1;
+   */
+  runId: string;
+};
+
+/**
+ * Describes the message criteria.v1.PauseRunRequest.
+ * Use `create(PauseRunRequestSchema)` to create a new message.
+ */
+export const PauseRunRequestSchema: GenMessage<PauseRunRequest> = /*@__PURE__*/
+  messageDesc(file_criteria_v1_server, 12);
+
+/**
+ * @generated from message criteria.v1.PauseRunResponse
+ */
+export type PauseRunResponse = Message<"criteria.v1.PauseRunResponse"> & {
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 1;
+   */
+  issuedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message criteria.v1.PauseRunResponse.
+ * Use `create(PauseRunResponseSchema)` to create a new message.
+ */
+export const PauseRunResponseSchema: GenMessage<PauseRunResponse> = /*@__PURE__*/
+  messageDesc(file_criteria_v1_server, 13);
+
+/**
+ * @generated from message criteria.v1.ResumeRunRequest
+ */
+export type ResumeRunRequest = Message<"criteria.v1.ResumeRunRequest"> & {
+  /**
+   * @generated from field: string run_id = 1;
+   */
+  runId: string;
+};
+
+/**
+ * Describes the message criteria.v1.ResumeRunRequest.
+ * Use `create(ResumeRunRequestSchema)` to create a new message.
+ */
+export const ResumeRunRequestSchema: GenMessage<ResumeRunRequest> = /*@__PURE__*/
+  messageDesc(file_criteria_v1_server, 14);
+
+/**
+ * @generated from message criteria.v1.ResumeRunResponse
+ */
+export type ResumeRunResponse = Message<"criteria.v1.ResumeRunResponse"> & {
+  /**
+   * @generated from field: google.protobuf.Timestamp issued_at = 1;
+   */
+  issuedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message criteria.v1.ResumeRunResponse.
+ * Use `create(ResumeRunResponseSchema)` to create a new message.
+ */
+export const ResumeRunResponseSchema: GenMessage<ResumeRunResponse> = /*@__PURE__*/
+  messageDesc(file_criteria_v1_server, 15);
+
+/**
+ * @generated from message criteria.v1.InspectRunRequest
+ */
+export type InspectRunRequest = Message<"criteria.v1.InspectRunRequest"> & {
+  /**
+   * @generated from field: string run_id = 1;
+   */
+  runId: string;
+
+  /**
+   * optional; if empty the server may return a summary
+   *
+   * @generated from field: string session_id = 2;
+   */
+  sessionId: string;
+};
+
+/**
+ * Describes the message criteria.v1.InspectRunRequest.
+ * Use `create(InspectRunRequestSchema)` to create a new message.
+ */
+export const InspectRunRequestSchema: GenMessage<InspectRunRequest> = /*@__PURE__*/
+  messageDesc(file_criteria_v1_server, 16);
+
+/**
+ * @generated from message criteria.v1.InspectRunResponse
+ */
+export type InspectRunResponse = Message<"criteria.v1.InspectRunResponse"> & {
+  /**
+   * @generated from field: string run_id = 1;
+   */
+  runId: string;
+
+  /**
+   * @generated from field: string session_id = 2;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: string adapter = 3;
+   */
+  adapter: string;
+
+  /**
+   * @generated from field: string current_step = 4;
+   */
+  currentStep: string;
+
+  /**
+   * @generated from field: int64 pending_permissions = 5;
+   */
+  pendingPermissions: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_activity_at = 6;
+   */
+  lastActivityAt?: Timestamp | undefined;
+
+  /**
+   * Opaque adapter state — the host pretty-prints any well-formed JSON.
+   *
+   * @generated from field: string state_json = 7;
+   */
+  stateJson: string;
+};
+
+/**
+ * Describes the message criteria.v1.InspectRunResponse.
+ * Use `create(InspectRunResponseSchema)` to create a new message.
+ */
+export const InspectRunResponseSchema: GenMessage<InspectRunResponse> = /*@__PURE__*/
+  messageDesc(file_criteria_v1_server, 17);
+
+/**
  * @generated from message criteria.v1.SendPromptRequest
  */
 export type SendPromptRequest = Message<"criteria.v1.SendPromptRequest"> & {
@@ -357,7 +498,7 @@ export type SendPromptRequest = Message<"criteria.v1.SendPromptRequest"> & {
  * Use `create(SendPromptRequestSchema)` to create a new message.
  */
 export const SendPromptRequestSchema: GenMessage<SendPromptRequest> = /*@__PURE__*/
-  messageDesc(file_criteria_v1_server, 12);
+  messageDesc(file_criteria_v1_server, 18);
 
 /**
  * @generated from message criteria.v1.SendPromptResponse
@@ -374,7 +515,7 @@ export type SendPromptResponse = Message<"criteria.v1.SendPromptResponse"> & {
  * Use `create(SendPromptResponseSchema)` to create a new message.
  */
 export const SendPromptResponseSchema: GenMessage<SendPromptResponse> = /*@__PURE__*/
-  messageDesc(file_criteria_v1_server, 13);
+  messageDesc(file_criteria_v1_server, 19);
 
 /**
  * @generated from service criteria.v1.ServerService
@@ -448,6 +589,38 @@ export const ServerService: GenService<{
     methodKind: "unary";
     input: typeof StopRunRequestSchema;
     output: typeof StopRunResponseSchema;
+  },
+  /**
+   * PauseRun halts a run without losing state. The adapter session is
+   * paused via the v2 adapter Pause RPC.
+   *
+   * @generated from rpc criteria.v1.ServerService.PauseRun
+   */
+  pauseRun: {
+    methodKind: "unary";
+    input: typeof PauseRunRequestSchema;
+    output: typeof PauseRunResponseSchema;
+  },
+  /**
+   * ResumeRun continues a previously paused run.
+   *
+   * @generated from rpc criteria.v1.ServerService.ResumeRun
+   */
+  resumeRun: {
+    methodKind: "unary";
+    input: typeof ResumeRunRequestSchema;
+    output: typeof ResumeRunResponseSchema;
+  },
+  /**
+   * InspectRun returns structured read-only state for a run. If session_id
+   * is empty the server may return a summary across all sessions.
+   *
+   * @generated from rpc criteria.v1.ServerService.InspectRun
+   */
+  inspectRun: {
+    methodKind: "unary";
+    input: typeof InspectRunRequestSchema;
+    output: typeof InspectRunResponseSchema;
   },
   /**
    * SendPrompt — schema-only stub for Phase 2.3. UI clients can wire up

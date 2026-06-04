@@ -6,7 +6,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { Agent, GetAgentRequest, GetRunRequest, ListAgentsRequest, ListAgentsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, SendPromptRequest, SendPromptResponse, StopRunRequest, StopRunResponse, WatchRunRequest } from "./server_pb.js";
+import { Agent, GetAgentRequest, GetRunRequest, InspectRunRequest, InspectRunResponse, ListAgentsRequest, ListAgentsResponse, ListRunEventsRequest, ListRunEventsResponse, ListRunsRequest, ListRunsResponse, PauseRunRequest, PauseRunResponse, ResumeRunRequest, ResumeRunResponse, SendPromptRequest, SendPromptResponse, StopRunRequest, StopRunResponse, WatchRunRequest } from "./server_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 import { Run } from "./criteria_pb.js";
 import { Envelope } from "./events_pb.js";
@@ -91,6 +91,41 @@ export const ServerService = {
       name: "StopRun",
       I: StopRunRequest,
       O: StopRunResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * PauseRun halts a run without losing state. The adapter session is
+     * paused via the v2 adapter Pause RPC.
+     *
+     * @generated from rpc criteria.v1.ServerService.PauseRun
+     */
+    pauseRun: {
+      name: "PauseRun",
+      I: PauseRunRequest,
+      O: PauseRunResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * ResumeRun continues a previously paused run.
+     *
+     * @generated from rpc criteria.v1.ServerService.ResumeRun
+     */
+    resumeRun: {
+      name: "ResumeRun",
+      I: ResumeRunRequest,
+      O: ResumeRunResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * InspectRun returns structured read-only state for a run. If session_id
+     * is empty the server may return a summary across all sessions.
+     *
+     * @generated from rpc criteria.v1.ServerService.InspectRun
+     */
+    inspectRun: {
+      name: "InspectRun",
+      I: InspectRunRequest,
+      O: InspectRunResponse,
       kind: MethodKind.Unary,
     },
     /**
