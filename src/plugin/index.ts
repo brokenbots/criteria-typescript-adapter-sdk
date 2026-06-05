@@ -8,7 +8,7 @@
 
 import { startServerV2, stopServerV2 } from './server-v2.js';
 import { validateAndExitOnFailure } from './handshake.js';
-import type { ServeConfig } from './types-v2.js';
+import type { ServeConfig, SchemaDef } from './types-v2.js';
 
 // Re-export v2 types
 export type {
@@ -73,6 +73,24 @@ export { startServerV2, stopServerV2 };
  * });
  * ```
  */
+// Map wire/SDK schema type spellings to the host manifest's well-known set
+// (string | number | boolean | object | array). The wire also accepts "bool"
+// and "list_string"; the manifest validator does not, so normalize here.
+const MANIFEST_TYPE_ALIASES: Record<string, string> = {
+  bool: 'boolean',
+  list_string: 'array',
+};
+
+function normalizeSchema(schema?: SchemaDef): { fields: Record<string, unknown> } {
+  const fields: Record<string, unknown> = {};
+  for (const [name, field] of Object.entries(schema?.fields ?? {})) {
+    const f = field as Record<string, unknown>;
+    const type = f.type as string | undefined;
+    fields[name] = { ...f, type: type ? (MANIFEST_TYPE_ALIASES[type] ?? type) : type };
+  }
+  return { fields };
+}
+
 /**
  * Build the adapter.yaml manifest document from a ServeConfig, in the schema
  * the Criteria host's manifest parser consumes. Emitted as JSON, which is valid
@@ -91,9 +109,9 @@ export function buildManifest(config: ServeConfig): Record<string, unknown> {
       return { os, arch };
     }),
     sdk_protocol_version: 2,
-    config_schema: config.config_schema ?? { fields: {} },
-    input_schema: config.input_schema ?? { fields: {} },
-    output_schema: config.output_schema ?? { fields: {} },
+    config_schema: normalizeSchema(config.config_schema),
+    input_schema: normalizeSchema(config.input_schema),
+    output_schema: normalizeSchema(config.output_schema),
     secrets: (config.secrets ?? []).map((s) =>
       typeof s === 'string'
         ? { name: s, description: '', required: true }
