@@ -73,7 +73,45 @@ export { startServerV2, stopServerV2 };
  * });
  * ```
  */
+/**
+ * Build the adapter.yaml manifest document from a ServeConfig, in the schema
+ * the Criteria host's manifest parser consumes. Emitted as JSON, which is valid
+ * YAML and parses identically.
+ */
+export function buildManifest(config: ServeConfig): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    name: config.name,
+    version: config.version,
+    description: config.description ?? '',
+    source_url: config.source_url ?? '',
+    capabilities: config.capabilities ?? [],
+    platforms: (config.platforms ?? []).map((p) => {
+      const [os, arch] = p.split('/');
+      return { os, arch };
+    }),
+    sdk_protocol_version: 2,
+    config_schema: config.config_schema ?? { fields: {} },
+    input_schema: config.input_schema ?? { fields: {} },
+    output_schema: config.output_schema ?? { fields: {} },
+    secrets: (config.secrets ?? []).map((s) =>
+      typeof s === 'string'
+        ? { name: s, description: '', required: true }
+        : { name: s.name, description: s.description ?? '', required: s.required ?? true }
+    ),
+    permissions: (config.permissions ?? []).map((p) => (typeof p === 'string' ? p : p.name)),
+  };
+}
+
 export async function serve(config: ServeConfig): Promise<void> {
+  // When invoked with --emit-manifest, write adapter.yaml to stdout and exit.
+  // The build pipeline (and `criteria adapter publish`) use this to extract the
+  // manifest. Every adapter gets this for free via serve().
+  if (process.argv.includes('--emit-manifest')) {
+    console.log(JSON.stringify(buildManifest(config), null, 2));
+    process.exit(0);
+  }
+
   validateAndExitOnFailure();
 
   const { server } = await startServerV2(config, () => process.exit(0));
