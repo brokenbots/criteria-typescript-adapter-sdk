@@ -49,6 +49,11 @@ jobs:
           fi
 
       - name: Publish to npm
-        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::warning::NPM_TOKEN is not set — skipping publish. Configure the @criteria npm scope and an NPM_TOKEN secret to enable publishing."
+            exit 0
+          fi
+          npm publish
