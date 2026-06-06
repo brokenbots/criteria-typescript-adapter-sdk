@@ -345,7 +345,18 @@ function buildInfoResponse(config: ServeConfig): object {
   };
 }
 
-export function startServerV2(config: ServeConfig, onShutdown: () => void): Promise<{ server: grpc.Server; address: string }> {
+/** Options controlling how {@link startServerV2} brings up the gRPC server. */
+export interface StartServerV2Options {
+  /**
+   * When false, the go-plugin handshake line is not written to stdout. Used by
+   * `serveRemote()`, where the host learns the address via the phone-home
+   * bridge rather than by reading the child process's stdout. Defaults to true.
+   */
+  emitHandshake?: boolean;
+}
+
+export function startServerV2(config: ServeConfig, onShutdown: () => void, opts: StartServerV2Options = {}): Promise<{ server: grpc.Server; address: string }> {
+  const emitHandshake = opts.emitHandshake ?? true;
   return new Promise((resolve, reject) => {
     const server = new grpc.Server();
     const protoDescriptor = loadProtoService();
@@ -705,7 +716,9 @@ export function startServerV2(config: ServeConfig, onShutdown: () => void): Prom
         handshakeAddress = `127.0.0.1:${port}`;
       }
       // go-plugin handshake: CORE-VERSION|APP-VERSION|NETWORK|ADDRESS|PROTOCOL|
-      process.stdout.write(`1|1|${handshakeNetwork}|${handshakeAddress}|grpc|\n`);
+      if (emitHandshake) {
+        process.stdout.write(`1|1|${handshakeNetwork}|${handshakeAddress}|grpc|\n`);
+      }
       resolve({ server, address: handshakeAddress });
     });
   });
