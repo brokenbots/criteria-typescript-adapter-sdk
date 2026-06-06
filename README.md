@@ -166,6 +166,61 @@ interface EventSender {
 
 See `examples/openai/index.ts` for a complete implementation.
 
+## Running as a remote adapter
+
+By default an adapter is launched locally by the Criteria host. An adapter can
+instead run anywhere (Kubernetes, ECS, a VM, a systemd unit) and *dial out* to
+the host's `remote` environment shim. From your code this is a one-function
+change — `serveRemote(config, options)` instead of `serve(config)`; every
+handler behaves identically.
+
+```typescript
+import { serveRemote } from '@criteria/adapter-sdk';
+
+serveRemote(
+  {
+    name: 'my-adapter',
+    version: '1.0.0',
+    description: 'Does useful things',
+    async execute(req, helpers) {
+      await helpers.outcomes.finalize('success');
+    },
+  },
+  {
+    // Host bind address of the workflow's `remote` environment.
+    host: 'criteria.example.com:7778',
+    // mTLS material — PEM contents or file paths are both accepted.
+    mtls: {
+      client_cert: process.env.CRITERIA_REMOTE_TLS_CERT!,
+      client_key: process.env.CRITERIA_REMOTE_TLS_KEY!,
+      ca_bundle: process.env.CRITERIA_REMOTE_CA!,
+    },
+    // Optional bearer token the host requires on connect.
+    accept_token: process.env.CRITERIA_REMOTE_TOKEN,
+    // The host verifies this digest against its lockfile entry.
+    identity: { digest: process.env.CRITERIA_REMOTE_DIGEST! },
+    // Reconnect with backoff when the host connection drops (the default).
+    reconnect: true,
+  },
+);
+```
+
+How it works: the SDK opens an mTLS connection to the host, sends a single
+newline-terminated identity frame (`{ name, version, digest, token }`), then
+serves the gRPC `AdapterService` over the held connection. The host shim bridges
+that connection to a local socket and consumes it as if the adapter were local.
+
+`serveRemote` still supports `--emit-manifest`, so the same binary works in your
+build/publish pipeline unchanged. The OCI artifact is identical; only the
+container entrypoint / launcher script decides whether to call `serve` or
+`serveRemote`.
+
+**Deployment examples** — copy-pasteable Kubernetes `Deployment`,
+`docker-compose`, and `systemd` manifests live under
+[`examples/remote/`](examples/remote/). Adapter launch and network reachability
+(VPN, Tailscale, ngrok, a public address) are the operator's responsibility;
+Criteria does not start or tunnel to remote adapters.
+
 ## Project Structure
 
 ```

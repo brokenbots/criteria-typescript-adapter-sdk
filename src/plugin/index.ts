@@ -10,6 +10,14 @@ import { startServerV2, stopServerV2 } from './server-v2.js';
 import { validateAndExitOnFailure } from './handshake.js';
 import type { ServeConfig, SchemaDef } from './types-v2.js';
 
+export { serveRemote } from './serveRemote.js';
+export type {
+  ServeRemoteOptions,
+  ServeRemoteMTLS,
+  ServeRemoteIdentity,
+  ServeRemoteReconnect,
+} from './serveRemote.js';
+
 // Re-export v2 types
 export type {
   ServeConfig,
