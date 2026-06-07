@@ -253,3 +253,13 @@ bun run proto:generate
 ## License
 
 MIT
+
+## Security & dependencies
+
+See [SECURITY.md](SECURITY.md) and [docs/dependency-policy.md](docs/dependency-policy.md).
+Reproduce the CI security checks locally:
+
+```bash
+bun run vuln-scan      # osv-scanner — blocking known-vulnerability gate (reads bun.lock)
+bun run deps:outdated  # bun outdated — freshness report
+```
