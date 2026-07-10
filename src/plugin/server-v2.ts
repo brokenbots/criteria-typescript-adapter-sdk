@@ -11,6 +11,12 @@ import { PROTOCOL_VERSION } from './handshake.js';
 import protoJson from '../proto/criteria/v2/adapter.json' with { type: 'json' };
 import type { ServeConfig, SessionStore, Helpers } from './types-v2.js';
 
+// Idle server-streams must emit a Heartbeat on this cadence. The host's
+// stall detector, fed solely by the Log stream, declares a session crashed
+// after ~90s (three missed heartbeats) of silence. Keep this in sync with the
+// Go SDK's criteriav2.HeartbeatInterval.
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 /** Convert a plain JS value to proto-loader's google.protobuf.Value wire format. */
 function toProtoValue(value: unknown): object {
   if (value === null || value === undefined) {
@@ -454,13 +460,31 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
           session.logBuffer = [];
         }
 
+        // Emit periodic heartbeats on the Log stream. The host's stall detector
+        // is fed solely by this stream and an idle session emits no log traffic
+        // while it waits behind a long-running step on another session, so
+        // without these it is falsely declared crashed after ~90s. The host only
+        // checks that the heartbeat field is present, not its contents.
+        const heartbeat = setInterval(() => {
+          if (!session.logStream) {
+            return;
+          }
+          try {
+            session.logStream.write({ heartbeat: { streamName: 'log' } });
+          } catch {
+            /* stream is closing; the close/cancelled handler clears the timer */
+          }
+        }, HEARTBEAT_INTERVAL_MS);
+        // Don't let the heartbeat timer keep the process alive on its own.
+        heartbeat.unref?.();
+
+        const stop = () => {
+          clearInterval(heartbeat);
+          session.logStream = undefined;
+        };
         // Keep stream open until client closes it
-        call.on('cancelled', () => {
-          session.logStream = undefined;
-        });
-        call.on('close', () => {
-          session.logStream = undefined;
-        });
+        call.on('cancelled', stop);
+        call.on('close', stop);
       },
 
       Permissions: (call: grpc.ServerDuplexStream<unknown, unknown>) => {
