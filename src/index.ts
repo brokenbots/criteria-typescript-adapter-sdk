@@ -50,5 +50,7 @@ done
 // Re-export everything from the plugin module
 export * from './plugin/index.js';
 
-// Version constant — matches criteria SDK v0.3.0
-export const SDK_VERSION = '0.5.0';
+// Generated from package.json at build time (scripts/gen-version.ts), so it
+// cannot drift from the published version and stays a plain inlined literal —
+// safe when the SDK is bundled into a compiled adapter via `bun build --compile`.
+export { SDK_VERSION } from './version.js';

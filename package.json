@@ -25,9 +25,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "bun scripts/gen-version.ts && tsc",
     "build:watch": "tsc --watch",
+    "gen:version": "bun scripts/gen-version.ts",
     "proto:generate": "buf generate ../criteria/proto",
+    "proto:json": "node scripts/gen-proto-json.mjs",
     "proto:lint": "buf lint ../criteria/proto",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -42,10 +44,15 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.2.5",
-    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/grpc-js": "^1.14.4",
     "@grpc/proto-loader": "^0.7.13",
     "long": "^5.2.3",
-    "protobufjs": "^7.4.0"
+    "protobufjs": "^7.6.3"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.6",
+    "js-yaml": "^4.2.0",
+    "protobufjs": "^7.6.3"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.50.0",
@@ -81,9 +88,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/brokenbots/criteria-typescript-sdk.git"
-  },
-  "overrides": {
-    "brace-expansion": "^5.0.6",
-    "protobufjs": "^7.5.8"
   }
 }

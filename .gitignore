@@ -115,3 +115,6 @@ dist
 # Editors
 .vscode
 package-lock.json
+
+# Generated from package.json by scripts/gen-version.ts
+src/version.ts

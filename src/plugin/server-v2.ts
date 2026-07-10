@@ -4,31 +4,12 @@
 
 import './long-polyfill.js';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
+import type { INamespace } from 'protobufjs';
+import { PROTOCOL_VERSION } from './handshake.js';
+import protoJson from '../proto/criteria/v2/adapter.json' with { type: 'json' };
 import type { ServeConfig, SessionStore, Helpers } from './types-v2.js';
-
-const PROTO_PATH = new URL('../../proto/criteria/v2/adapter.proto', import.meta.url).pathname;
-const INCLUDE_DIR = new URL('../../proto', import.meta.url).pathname;
-
-function resolveProtoPaths(): { protoPath: string; includeDir: string } {
-  if (fs.existsSync(PROTO_PATH)) {
-    return { protoPath: PROTO_PATH, includeDir: INCLUDE_DIR };
-  }
-  // Fallback for compiled binaries: resolve relative to executable
-  const binaryDir = process.argv[1] ? path.dirname(process.argv[1]) : process.cwd();
-  const fallbackProto = path.join(binaryDir, 'proto/criteria/v2/adapter.proto');
-  const fallbackInclude = path.join(binaryDir, 'proto');
-  if (fs.existsSync(fallbackProto)) {
-    return { protoPath: fallbackProto, includeDir: fallbackInclude };
-  }
-  // Final fallback: cwd
-  return {
-    protoPath: path.join(process.cwd(), 'proto/criteria/v2/adapter.proto'),
-    includeDir: path.join(process.cwd(), 'proto'),
-  };
-}
 
 /** Convert a plain JS value to proto-loader's google.protobuf.Value wire format. */
 function toProtoValue(value: unknown): object {
@@ -280,13 +261,15 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
 // ─── gRPC service implementation ─────────────────────────────────────────────
 
 function loadProtoService(): grpc.GrpcObject {
-  const { protoPath, includeDir } = resolveProtoPaths();
-  const packageDefinition = protoLoader.loadSync(protoPath, {
+  // Loaded from a bundled JSON descriptor rather than the .proto on disk:
+  // `bun build --compile` cannot bundle a file read at runtime, which would
+  // leave the compiled binary dependent on its working directory.
+  // Regenerate with `bun run proto:json` after editing adapter.proto.
+  const packageDefinition = protoLoader.fromJSON(protoJson as INamespace, {
     longs: String,
     enums: String,
     defaults: true,
     oneofs: true,
-    includeDirs: [includeDir],
   });
   return grpc.loadPackageDefinition(packageDefinition);
 }
@@ -302,16 +285,8 @@ function buildInfoResponse(config: ServeConfig): object {
       }
     }
   }
-  const permissionsMap: Record<string, { description?: string }> = {};
-  if (config.permissions) {
-    for (const p of config.permissions) {
-      if (typeof p === 'string') {
-        permissionsMap[p] = {};
-      } else {
-        permissionsMap[p.name] = { description: p.description ?? '' };
-      }
-    }
-  }
+  // InfoResponse.permissions is `repeated string` — names only, no descriptions.
+  const permissionNames = (config.permissions ?? []).map((p) => (typeof p === 'string' ? p : p.name));
   const schemaFromDef = (def?: { fields: Record<string, { type?: string; required?: boolean; description?: string }> }): object | undefined => {
     if (!def) return undefined;
     const fields: Record<string, object> = {};
@@ -337,7 +312,7 @@ function buildInfoResponse(config: ServeConfig): object {
     input_schema: schemaFromDef(config.input_schema),
     output_schema: schemaFromDef(config.output_schema),
     secrets: secretsMap,
-    permissions: permissionsMap,
+    permissions: permissionNames,
     compatible_environments: [],
     container_image: '',
     supported_features: config.snapshot || config.restore ? ['snapshot', 'restore'] : [],
@@ -355,7 +330,7 @@ export interface StartServerV2Options {
   emitHandshake?: boolean;
 }
 
-export function startServerV2(config: ServeConfig, onShutdown: () => void, opts: StartServerV2Options = {}): Promise<{ server: grpc.Server; address: string }> {
+export function startServerV2(config: ServeConfig, opts: StartServerV2Options = {}): Promise<{ server: grpc.Server; address: string }> {
   const emitHandshake = opts.emitHandshake ?? true;
   return new Promise((resolve, reject) => {
     const server = new grpc.Server();
@@ -368,7 +343,6 @@ export function startServerV2(config: ServeConfig, onShutdown: () => void, opts:
     const impl: grpc.UntypedServiceImplementation = {
       Info: (_call: grpc.ServerUnaryCall<unknown, unknown>, callback: grpc.sendUnaryData<unknown>) => {
         callback(null, buildInfoResponse(config));
-        onShutdown();
       },
 
       OpenSession: (call: grpc.ServerUnaryCall<unknown, unknown>, callback: grpc.sendUnaryData<unknown>) => {
@@ -455,7 +429,6 @@ export function startServerV2(config: ServeConfig, onShutdown: () => void, opts:
           })
           .finally(() => {
             clearInterval(logInterval);
-            call.once('close', onShutdown);
             call.end();
           });
       },
@@ -717,7 +690,7 @@ export function startServerV2(config: ServeConfig, onShutdown: () => void, opts:
       }
       // go-plugin handshake: CORE-VERSION|APP-VERSION|NETWORK|ADDRESS|PROTOCOL|
       if (emitHandshake) {
-        process.stdout.write(`1|1|${handshakeNetwork}|${handshakeAddress}|grpc|\n`);
+        process.stdout.write(`1|${PROTOCOL_VERSION}|${handshakeNetwork}|${handshakeAddress}|grpc|\n`);
       }
       resolve({ server, address: handshakeAddress });
     });
