@@ -12,8 +12,8 @@ export const MAGIC_COOKIE_KEY = 'CRITERIA_PLUGIN';
 /** Expected value for the magic cookie */
 export const MAGIC_COOKIE_VALUE = '7a1bf31f-c805-4e75-a31c-22195c9fdd4c';
 
-/** Protocol version (always 1 for now) */
-export const PROTOCOL_VERSION = 1;
+/** go-plugin app protocol version. Must match the host's adapterhost.Handshake. */
+export const PROTOCOL_VERSION = 2;
 
 /**
  * Validate the handshake cookie.

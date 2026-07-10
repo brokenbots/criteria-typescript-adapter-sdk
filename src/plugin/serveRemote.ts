@@ -234,7 +234,7 @@ export async function serveRemote(config: ServeConfig, opts: ServeRemoteOptions)
 
   // The held connection is reused for the whole session, so Info()/Execute
   // completion must NOT terminate the process the way serve() does.
-  const { server, address } = await startServerV2(config, () => {}, { emitHandshake: false });
+  const { server, address } = await startServerV2(config, { emitHandshake: false });
   const localPort = Number(address.split(':').pop());
 
   let server_: Server | undefined = server;

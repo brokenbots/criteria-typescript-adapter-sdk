@@ -111,7 +111,7 @@ export class TestHost {
   async start(): Promise<void> {
     if (this.config) {
       // In-process
-      const { server, address } = await startServerV2(this.config, () => {});
+      const { server, address } = await startServerV2(this.config);
       this.server = server;
       this.address = address;
       this.client = new AdapterService(address, grpc.credentials.createInsecure());
