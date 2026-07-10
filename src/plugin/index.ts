@@ -140,10 +140,11 @@ export async function serve(config: ServeConfig): Promise<void> {
 
   validateAndExitOnFailure();
 
-  const { server } = await startServerV2(config, () => process.exit(0));
+  const { server } = await startServerV2(config);
 
-  process.once('SIGTERM', () => { stopServerV2(server); process.exit(0); });
-  process.once('SIGINT',  () => { stopServerV2(server); process.exit(0); });
+  const shutdown = () => { stopServerV2(server); process.exit(0); };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 
   // Keep process alive
   await new Promise(() => {});
