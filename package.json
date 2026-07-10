@@ -26,7 +26,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun scripts/gen-version.ts && tsc",
+    "build": "bun run clean && bun scripts/gen-version.ts && tsc",
     "build:watch": "tsc --watch",
     "gen:version": "bun scripts/gen-version.ts",
     "proto:generate": "buf generate ../criteria/proto",
