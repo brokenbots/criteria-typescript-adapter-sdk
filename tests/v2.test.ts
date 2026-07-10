@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { TestHost } from "@criteria/adapter-sdk/testing";
+import { TestHost } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
 
 describe("v2 SDK", () => {
   it("in-process adapter executes and finalizes", async () => {

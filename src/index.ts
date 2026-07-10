@@ -1,5 +1,5 @@
 /**
- * @criteria/adapter-sdk
+ * @brokenbots/criteria-typescript-adapter-sdk
  * 
  * TypeScript SDK for building Criteria adapter plugins. This SDK enables you to write out-of-process adapter plugins for the Criteria
  * workflow engine using TypeScript, with Bun compilation for native binary distribution via OCI.
@@ -7,7 +7,7 @@
  * ## Quick Start
  * 
  * ```typescript
- * import { serve } from '@criteria/adapter-sdk';
+ * import { serve } from '@brokenbots/criteria-typescript-adapter-sdk';
  * 
  * serve({
  *   name: 'my-adapter',

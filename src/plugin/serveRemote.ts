@@ -192,7 +192,7 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  *
  * @example
  * ```typescript
- * import { serveRemote } from '@criteria/adapter-sdk';
+ * import { serveRemote } from '@brokenbots/criteria-typescript-adapter-sdk';
  *
  * serveRemote(
  *   {

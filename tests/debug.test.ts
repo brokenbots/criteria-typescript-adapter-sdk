@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { TestHost } from "@criteria/adapter-sdk/testing";
+import { TestHost } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
 
 describe("debug", () => {
   it("shows event shape", async () => {

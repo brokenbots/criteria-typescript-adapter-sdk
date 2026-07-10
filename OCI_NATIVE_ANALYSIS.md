@@ -172,7 +172,7 @@ If Bun proves problematic:
 ### Phase 1: Bun Compile (MVP)
 ```typescript
 // plugin.ts
-import { serveAdapter } from '@criteria/adapter-sdk';
+import { serveAdapter } from '@brokenbots/criteria-typescript-adapter-sdk';
 
 serveAdapter({
   name: 'my-adapter',

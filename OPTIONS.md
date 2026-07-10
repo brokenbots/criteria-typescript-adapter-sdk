@@ -107,7 +107,7 @@ Options:
 3. `criteria-adapter-sdk` - Simple flat name
 4. `@brokenbots/criteria-sdk` - Match Go module path
 
-**Recommendation:** `@criteria/adapter-sdk` - clear scope, matches Go SDK structure.
+**Recommendation:** `@brokenbots/criteria-typescript-adapter-sdk` - clear scope, matches Go SDK structure.
 
 ---
 
