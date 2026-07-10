@@ -1,11 +1,12 @@
 {
-  "name": "@criteria/adapter-sdk",
-  "version": "0.5.0",
+  "name": "@brokenbots/criteria-typescript-adapter-sdk",
+  "version": "0.0.0",
   "description": "TypeScript SDK for Criteria adapter plugins - enables building workflow adapters in TypeScript",
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
+  "//version": "Placeholder. The real version is set from the release tag by .github/workflows/publish.yml (`npm version <tag>`); do not hand-bump this.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -83,10 +84,10 @@
     "go-plugin",
     "typescript"
   ],
-  "author": "Your Name",
+  "author": "brokenbots",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/brokenbots/criteria-typescript-sdk.git"
+    "url": "git+https://github.com/brokenbots/criteria-typescript-adapter-sdk.git"
   }
 }

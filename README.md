@@ -1,4 +1,4 @@
-# @criteria/adapter-sdk
+# @brokenbots/criteria-typescript-adapter-sdk
 
 TypeScript SDK for building Criteria adapter plugins. This SDK enables you to write out-of-process adapter plugins for the Criteria workflow engine using TypeScript, with Bun compilation for native binary distribution via OCI.
 
@@ -10,6 +10,31 @@ TypeScript SDK for building Criteria adapter plugins. This SDK enables you to wr
 - **Bun compilation** - Single binary output for OCI distribution
 - **Multi-arch** - Linux x86_64, Linux ARM64, macOS ARM64
 - **gRPC transport** - Compatible with HashiCorp go-plugin
+
+## Installing the published package
+
+Releases are published to **two registries** on every `v*` tag:
+
+- **npmjs.org** (public, default) — no configuration needed:
+
+  ```bash
+  npm install @brokenbots/criteria-typescript-adapter-sdk
+  ```
+
+- **GitHub Packages** (`npm.pkg.github.com`) — point the `@brokenbots` scope at
+  GitHub's registry and authenticate with a token that has `read:packages`.
+  Add to your project's `.npmrc`:
+
+  ```ini
+  @brokenbots:registry=https://npm.pkg.github.com
+  //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+  ```
+
+  then `npm install @brokenbots/criteria-typescript-adapter-sdk`.
+
+The package version always matches its git tag — it is stamped in at release time
+(see `.github/workflows/publish.yml`), so `package.json` in the repo carries a
+`0.0.0` placeholder.
 
 ## Requirements
 
@@ -139,7 +164,7 @@ Features:
 Simplest way to create an adapter:
 
 ```typescript
-import { serve } from '@criteria/adapter-sdk';
+import { serve } from '@brokenbots/criteria-typescript-adapter-sdk';
 
 serve({
   name: 'my-adapter',
@@ -175,7 +200,7 @@ change — `serveRemote(config, options)` instead of `serve(config)`; every
 handler behaves identically.
 
 ```typescript
-import { serveRemote } from '@criteria/adapter-sdk';
+import { serveRemote } from '@brokenbots/criteria-typescript-adapter-sdk';
 
 serveRemote(
   {

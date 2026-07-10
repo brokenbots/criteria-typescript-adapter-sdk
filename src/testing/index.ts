@@ -7,7 +7,7 @@
  *
  * @example In-process
  * ```ts
- * import { TestHost } from "@criteria/adapter-sdk/testing";
+ * import { TestHost } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
  *
  * const host = new TestHost({
  *   config: {

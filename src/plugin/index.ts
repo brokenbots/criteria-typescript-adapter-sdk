@@ -68,7 +68,7 @@ export { startServerV2, stopServerV2 };
  *
  * @example
  * ```typescript
- * import { serve } from '@criteria/adapter-sdk';
+ * import { serve } from '@brokenbots/criteria-typescript-adapter-sdk';
  *
  * serve({
  *   name: 'my-adapter',

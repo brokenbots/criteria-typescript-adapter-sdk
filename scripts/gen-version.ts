@@ -3,7 +3,8 @@
  * Generate src/version.ts from package.json.
  *
  * SDK_VERSION is derived rather than hand-maintained so it cannot drift from the
- * published version (the release workflow enforces package.json == tag). The
+ * published version (the release workflow stamps package.json from the git tag
+ * before this runs, so both track the tag). The
  * output is a plain string literal, which stays inlineable when the SDK is
  * bundled into a compiled adapter — a runtime read of package.json would throw
  * inside `bun build --compile` output, where no package.json exists on disk.

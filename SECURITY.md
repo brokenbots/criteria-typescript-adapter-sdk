@@ -8,7 +8,7 @@ Do not open a public issue for an undisclosed vulnerability.
 
 ## Supply-chain controls
 
-This is a TypeScript library (`@criteria/adapter-sdk`, consumed by Criteria
+This is a TypeScript library (`@brokenbots/criteria-typescript-adapter-sdk`, consumed by Criteria
 adapters), so it ships no binary. Dependency hygiene is enforced in CI and
 documented in [docs/dependency-policy.md](docs/dependency-policy.md):
 

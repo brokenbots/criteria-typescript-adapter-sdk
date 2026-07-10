@@ -63,7 +63,7 @@ export function isPluginInvocation(): boolean {
  * 
  * @example
  * ```typescript
- * import { validateAndExitOnFailure } from '@criteria/adapter-sdk';
+ * import { validateAndExitOnFailure } from '@brokenbots/criteria-typescript-adapter-sdk';
  * 
  * // This will exit with code 1 if handshake fails
  * validateAndExitOnFailure();

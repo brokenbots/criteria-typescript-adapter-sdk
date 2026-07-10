@@ -1,4 +1,4 @@
-# Contributing to @criteria/adapter-sdk
+# Contributing to @brokenbots/criteria-typescript-adapter-sdk
 
 ## Quick Start
 
