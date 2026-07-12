@@ -1,12 +1,13 @@
 version: v2
 managed:
   enabled: true
-  override:
-    - file_option: go_package
-      value: github.com/brokenbots/criteria/sdk/pb/criteria/v1;criteriav1
 
+# The canonical adapter proto lives in the criteria-adapter-proto repo
+# (v0.5.1+ already removed the legacy map<string,string> outputs field; field 2
+# is reserved and outputs_json is the sole output channel). Generating from the
+# canonical source keeps these bindings from drifting.
 inputs:
-  - directory: ../criteria/proto
+  - directory: ../criteria-adapter-proto/proto
 
 plugins:
   - local: protoc-gen-es

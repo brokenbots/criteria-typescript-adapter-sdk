@@ -131,9 +131,9 @@ lint: ## Run linter
 proto: ## Generate proto bindings (requires buf CLI)
 	@echo "$(BLUE)Generating proto bindings...$(NC)"
 	@if command -v npx >/dev/null 2>&1 && npx buf --version >/dev/null 2>&1; then \
-		npx buf generate ../criteria/proto; \
+		npx buf generate ../criteria-adapter-proto/proto; \
 	elif command -v buf >/dev/null 2>&1; then \
-		buf generate ../criteria/proto; \
+		buf generate ../criteria-adapter-proto/proto; \
 	else \
 		echo "$(RED)Error: buf CLI is required$(NC)"; \
 		echo "Install from: https://github.com/bufbuild/buf"; \
