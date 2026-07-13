@@ -94,10 +94,12 @@ export class TestHost {
   private sessionId?: string;
   private _logChunks: { stream: "stdout" | "stderr"; chunk: string }[] = [];
   private _permStream?: grpc.ClientDuplexStream<unknown, unknown>;
+  private _logStream?: grpc.ClientReadableStream<unknown>;
   private _autoGrantPermissions = false;
   private _permissionDelayMs = 0;
+  private _onTeardown?: (server: grpc.Server) => void;
 
-  constructor(opts: { binary?: string; config?: ServeConfig; autoGrantPermissions?: boolean; permissionDelayMs?: number }) {
+  constructor(opts: { binary?: string; config?: ServeConfig; autoGrantPermissions?: boolean; permissionDelayMs?: number; onTeardown?: (server: grpc.Server) => void }) {
     if (!opts.binary && !opts.config) {
       throw new Error("TestHost requires either `binary` or `config`");
     }
@@ -105,13 +107,14 @@ export class TestHost {
     this.config = opts.config;
     this._autoGrantPermissions = opts.autoGrantPermissions ?? false;
     this._permissionDelayMs = opts.permissionDelayMs ?? 0;
+    this._onTeardown = opts.onTeardown;
   }
 
   /** Start the adapter and connect. */
   async start(): Promise<void> {
     if (this.config) {
       // In-process
-      const { server, address } = await startServerV2(this.config);
+      const { server, address } = await startServerV2(this.config, this._onTeardown ? { onTeardown: this._onTeardown } : {});
       this.server = server;
       this.address = address;
       this.client = new AdapterService(address, grpc.credentials.createInsecure());
@@ -193,6 +196,7 @@ export class TestHost {
     });
 
     const logStream = (client as any).Log({ sessionId: this.sessionId });
+    this._logStream = logStream;
     const permStream = (client as any).Permissions();
     this._permStream = permStream;
 
@@ -201,6 +205,9 @@ export class TestHost {
       if (evt.stdout) this._logChunks.push({ stream: "stdout", chunk: evt.stdout });
       if (evt.stderr) this._logChunks.push({ stream: "stderr", chunk: evt.stderr });
     });
+    // Cancelling the log stream (teardown) surfaces as a CANCELLED 'error' in
+    // grpc-js; swallow it so the expected cancel doesn't fail the test run.
+    logStream.on("error", () => {});
 
     // Handle permission decisions from adapter -> host (acknowledge)
     permStream.on("data", (evt: any) => {
@@ -322,6 +329,20 @@ export class TestHost {
         resolve(undefined);
       });
     });
+  }
+
+  /**
+   * Cancel the Log stream from the client side, the way the real Criteria host
+   * does at teardown (`SessionManager.Close` → `cancelLog`). An explicit cancel
+   * sends an HTTP/2 CANCEL that the server sees promptly — unlike a bare
+   * `client.close()`, which tears the channel down without per-stream cancels.
+   */
+  cancelLogStream(): void {
+    try {
+      this._logStream?.cancel();
+    } catch {
+      /* already closed */
+    }
   }
 
   /** Stop the adapter / disconnect. */
