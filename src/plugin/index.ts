@@ -142,7 +142,14 @@ export async function serve(config: ServeConfig): Promise<void> {
 
   const { server } = await startServerV2(config);
 
-  const shutdown = () => { stopServerV2(server); process.exit(0); };
+  // On a graceful-shutdown signal from the host, close the gRPC server before
+  // exiting. stopServerV2 uses tryShutdown (waits for in-flight RPCs to drain);
+  // we wait for it so the host sees a clean disconnect rather than a process
+  // that vanishes mid-teardown — which is what leaves go-plugin's stdio drain
+  // goroutines waiting on EOF and produces "plugin failed to exit gracefully".
+  const shutdown = () => {
+    stopServerV2(server).finally(() => process.exit(0));
+  };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
 
