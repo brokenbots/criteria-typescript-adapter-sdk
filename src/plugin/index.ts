@@ -9,6 +9,7 @@
 import { startServerV2, stopServerV2 } from './server-v2.js';
 import { validateAndExitOnFailure } from './handshake.js';
 import type { ServeConfig, SchemaDef } from './types-v2.js';
+import type * as grpc from '@grpc/grpc-js';
 
 export { serveRemote } from './serveRemote.js';
 export type {
@@ -140,19 +141,26 @@ export async function serve(config: ServeConfig): Promise<void> {
 
   validateAndExitOnFailure();
 
-  const { server } = await startServerV2(config);
-
-  // On a graceful-shutdown signal from the host, close the gRPC server before
-  // exiting. stopServerV2 uses tryShutdown (waits for in-flight RPCs to drain);
-  // we wait for it so the host sees a clean disconnect rather than a process
-  // that vanishes mid-teardown — which is what leaves go-plugin's stdio drain
-  // goroutines waiting on EOF and produces "plugin failed to exit gracefully".
-  const shutdown = () => {
-    stopServerV2(server).finally(() => process.exit(0));
+  // go-plugin's graceful teardown sends no signal: it closes the gRPC client
+  // connection and waits ~2s for the plugin to exit on its own before SIGKILLing
+  // ("plugin failed to exit gracefully"). An adapter that parks in a
+  // never-resolving promise never notices the disconnect, so it always hits the
+  // SIGKILL. We instead self-exit when the host disconnects (detected via the
+  // long-lived Log stream closing — see StartServerV2Options.onTeardown), well
+  // within the grace window. SIGTERM/SIGINT stay as fallbacks for hosts that do
+  // signal (and for local dev).
+  let shuttingDown = false;
+  const shutdown = (srv: grpc.Server) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    stopServerV2(srv).finally(() => process.exit(0));
   };
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
 
-  // Keep process alive
+  const { server } = await startServerV2(config, { onTeardown: shutdown });
+
+  process.once('SIGTERM', () => shutdown(server));
+  process.once('SIGINT', () => shutdown(server));
+
+  // Keep process alive until the host disconnects (or a signal arrives).
   await new Promise(() => {});
 }

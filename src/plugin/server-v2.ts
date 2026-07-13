@@ -17,6 +17,12 @@ import type { ServeConfig, SessionStore, Helpers } from './types-v2.js';
 // Go SDK's criteriav2.HeartbeatInterval.
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+// Grace window between the last Log stream closing and triggering onTeardown.
+// Long enough to absorb the host cancelling+reopening the Log stream during
+// stall recovery / respawn (synchronous, completes in a single round-trip),
+// short enough to stay well inside go-plugin's ~2s teardown grace window.
+const HOST_DISCONNECT_GRACE_MS = 500;
+
 /** Convert a plain JS value to proto-loader's google.protobuf.Value wire format. */
 function toProtoValue(value: unknown): object {
   if (value === null || value === undefined) {
@@ -333,12 +339,58 @@ export interface StartServerV2Options {
    * bridge rather than by reading the child process's stdout. Defaults to true.
    */
   emitHandshake?: boolean;
+
+  /**
+   * Invoked when the host appears to have torn down the gRPC connection.
+   *
+   * go-plugin's graceful teardown does NOT send a signal: it closes its gRPC
+   * client (`client.Close()`), waits ~2s for the plugin to exit on its own, and
+   * only then SIGKILLs ("plugin failed to exit gracefully"). An adapter that
+   * parks forever never notices the disconnect and always hits the SIGKILL.
+   *
+   * We detect the disconnect via the long-lived Log stream(s) closing — the host
+   * keeps one open per session for the lifetime of the session and cancels it
+   * (along with the rest of the gRPC connection) on teardown. The host also
+   * cancels+reopens the Log stream during stall recovery / respawn, so this is
+   * debounced: a prompt reopen cancels the pending teardown, and only a
+   * disconnect with no reopen fires it. Receiving this callback does not itself
+   * exit the process — the caller decides (typically: drain the server then
+   * `process.exit(0)`), so that the SDK stays generic and testable.
+   */
+  onTeardown?: (server: grpc.Server) => void;
 }
 
 export function startServerV2(config: ServeConfig, opts: StartServerV2Options = {}): Promise<{ server: grpc.Server; address: string }> {
   const emitHandshake = opts.emitHandshake ?? true;
   return new Promise((resolve, reject) => {
     const server = new grpc.Server();
+
+    // ─── Host-disconnect detection ───────────────────────────────────────────
+    // See StartServerV2Options.onTeardown. We count open Log streams (one per
+    // session, kept open for the session lifetime); when the last one closes we
+    // schedule a teardown, and any prompt reopen (stall-recovery restart / host
+    // reusing the adapter for a new session) cancels it. Only a true disconnect
+    // — close with no reopen — fires onTeardown, well inside go-plugin's ~2s
+    // grace window, so the host never reaches its SIGKILL backstop.
+    const onTeardown = opts.onTeardown;
+    let openLogStreams = 0;
+    let teardownTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancelPendingTeardown = () => {
+      if (teardownTimer) {
+        clearTimeout(teardownTimer);
+        teardownTimer = undefined;
+      }
+    };
+    const scheduleTeardown = () => {
+      if (!onTeardown) return;
+      cancelPendingTeardown();
+      teardownTimer = setTimeout(() => {
+        teardownTimer = undefined;
+        onTeardown(server);
+      }, HOST_DISCONNECT_GRACE_MS);
+      teardownTimer.unref?.();
+    };
+
     const protoDescriptor = loadProtoService();
     const criteriaPkg = protoDescriptor.criteria as grpc.GrpcObject | undefined;
     const v2Pkg = criteriaPkg?.v2 as grpc.GrpcObject | undefined;
@@ -451,6 +503,11 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
 
         session.logStream = call;
 
+        // A (re)opened Log stream means the host is still connected — cancel any
+        // pending teardown that an earlier close may have scheduled.
+        openLogStreams++;
+        cancelPendingTeardown();
+
         // Flush buffered logs
         if (session.logBuffer.length > 0) {
           for (const ev of session.logBuffer) {
@@ -477,9 +534,19 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
         // Don't let the heartbeat timer keep the process alive on its own.
         heartbeat.unref?.();
 
+        let stopped = false;
         const stop = () => {
+          if (stopped) return;
+          stopped = true;
           clearInterval(heartbeat);
           session.logStream = undefined;
+          // Last long-lived Log stream gone → host is likely disconnecting.
+          // Debounced: a prompt reopen (stall recovery) cancels the teardown.
+          openLogStreams--;
+          if (openLogStreams <= 0) {
+            openLogStreams = 0;
+            scheduleTeardown();
+          }
         };
         // Keep stream open until client closes it
         call.on('cancelled', stop);
@@ -720,8 +787,39 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
   });
 }
 
-export function stopServerV2(server: grpc.Server): Promise<void> {
+/**
+ * Stop the gRPC server, preferring a graceful drain but never hanging.
+ *
+ * `tryShutdown` waits for in-flight RPCs to finish. That is normally instant
+ * at teardown (the host has already closed its side), but a stream that never
+ * drains would make the adapter un-exitable — and re-introduce the very
+ * "parked forever" failure this module now avoids. So: try graceful first, but
+ * bound it. If the drain stalls, `forceShutdown` closes the transport promptly.
+ * This shuts down the gRPC server only — it does NOT signal or kill any child
+ * process the adapter may have spawned; those are cleaned up by the adapter's
+ * own `process.on('exit')` handlers.
+ */
+export function stopServerV2(server: grpc.Server, timeoutMs = 3000): Promise<void> {
   return new Promise((resolve) => {
-    server.tryShutdown(() => resolve());
+    let settled = false;
+    const done = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+    server.tryShutdown((err) => {
+      if (err) {
+        // Drain stalled (e.g. an open stream that won't end) — close the
+        // transport so the process can still exit on its own schedule.
+        try { server.forceShutdown(); } catch { /* already stopped */ }
+      }
+      done();
+    });
+    const timer = setTimeout(() => {
+      try { server.forceShutdown(); } catch { /* already stopped */ }
+      done();
+    }, timeoutMs);
+    timer.unref?.();
   });
 }
