@@ -152,14 +152,13 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
         throw new Error('Result already sent');
       }
       session.finalized = true;
-      const outputs: Record<string, string> = {};
-      if (opts?.reason) {
-        outputs.reason = opts.reason;
-      }
+      const outputsMap: Record<string, unknown> = {
+        reason: opts?.reason ?? '',
+      };
       const event = {
         result: {
           outcome,
-          outputs,
+          outputsJson: Buffer.from(JSON.stringify(outputsMap)),
         },
       };
       if (session.executeStream) {

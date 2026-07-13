@@ -252,9 +252,17 @@ export class TestHost {
       });
     });
 
+    // outputs travel on the outputs_json bytes field (the legacy map<string,string>
+    // outputs field was removed in the v2 typed-outputs cutover). proto-loader
+    // maps outputs_json → outputsJson.
+    const outputsJson = (result as { outputsJson?: Uint8Array | string }).outputsJson;
+    const outputs: Record<string, unknown> = outputsJson
+      ? JSON.parse(Buffer.from(outputsJson).toString("utf8"))
+      : {};
+
     return {
       outcome: result.outcome ?? "",
-      reason: result.outputs?.reason ?? undefined,
+      reason: typeof outputs.reason === "string" ? outputs.reason : undefined,
       payload: result.payload ? fromProtoStruct(result.payload) : undefined,
     };
   }
