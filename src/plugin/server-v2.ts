@@ -216,23 +216,47 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
   };
 
   const permissionHelper = {
-    async request(req: { tool: string; args?: Record<string, unknown> }): Promise<{ decision: 'allow' | 'deny'; reason?: string }> {
+    async request(req: {
+      tool: string;
+      args?: Record<string, unknown>;
+      full_command_text?: unknown;
+      commands?: unknown;
+    }): Promise<{ decision: 'allow' | 'deny'; reason?: string }> {
       const requestId = `perm-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
       // Build args digest (simplified: JSON.stringify)
       const argsJson = req.args ? JSON.stringify(req.args) : '{}';
       const preview = argsJson.length > 200 ? argsJson.slice(0, 200) + '...' : argsJson;
 
+      // Forward command fingerprints so allow_tools colon patterns (e.g. "Bash:echo *")
+      // can match against the actual command text.  Values are forwarded as plain
+      // strings so the host's glob matcher can compare them unchanged.
+      // Prefer the adapter-provided top-level keys when present, otherwise derive
+      // them from the args map for backward compatibility with older callers.
+      const payload: Record<string, unknown> = {
+        request_id: requestId,
+        requestId: requestId,
+        tool: req.tool,
+        argsDigest: '', // TODO: proper digest
+        argsPreview: preview,
+      };
+      if (typeof req.full_command_text === 'string' && req.full_command_text.length > 0) {
+        payload.full_command_text = req.full_command_text;
+      } else if (typeof req.args?.command === 'string' && req.args.command.length > 0) {
+        payload.full_command_text = req.args.command;
+      }
+      const maybeCommands = req.commands ?? req.args?.commands;
+      if (typeof maybeCommands === 'string') {
+        payload.commands = maybeCommands;
+      } else if (Array.isArray(maybeCommands) && maybeCommands.every((v) => typeof v === 'string')) {
+        payload.commands = maybeCommands;
+      }
+
       // Send permission.request event on Execute stream
       const event = {
         adapter: {
           eventKind: 'permission.request',
-          payload: toProtoStruct({
-            requestId: requestId,
-            tool: req.tool,
-            argsDigest: '', // TODO: proper digest
-            argsPreview: preview,
-          }),
+          payload: toProtoStruct(payload),
         },
       };
       if (session.executeStream) {
