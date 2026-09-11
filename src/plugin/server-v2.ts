@@ -223,17 +223,34 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
       const argsJson = req.args ? JSON.stringify(req.args) : '{}';
       const preview = argsJson.length > 200 ? argsJson.slice(0, 200) + '...' : argsJson;
 
+      // Forward command fingerprints so allow_tools colon patterns (e.g. "Bash:echo *")
+      // can match against the actual command text.  Values are forwarded as plain
+      // strings so the host's glob matcher can compare them unchanged.
+      const payload: Record<string, unknown> = {
+        request_id: requestId,
+        requestId: requestId,
+        tool: req.tool,
+        argsDigest: '', // TODO: proper digest
+        argsPreview: preview,
+      };
+      if (req.args) {
+        const maybeCommand = req.args.command;
+        if (typeof maybeCommand === 'string' && maybeCommand.length > 0) {
+          payload.full_command_text = maybeCommand;
+        }
+        const maybeCommands = req.args.commands;
+        if (typeof maybeCommands === 'string') {
+          payload.commands = maybeCommands;
+        } else if (Array.isArray(maybeCommands) && maybeCommands.every((v) => typeof v === 'string')) {
+          payload.commands = maybeCommands;
+        }
+      }
+
       // Send permission.request event on Execute stream
       const event = {
         adapter: {
           eventKind: 'permission.request',
-          payload: toProtoStruct({
-            request_id: requestId,
-            requestId: requestId,
-            tool: req.tool,
-            argsDigest: '', // TODO: proper digest
-            argsPreview: preview,
-          }),
+          payload: toProtoStruct(payload),
         },
       };
       if (session.executeStream) {
