@@ -228,6 +228,7 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
         adapter: {
           eventKind: 'permission.request',
           payload: toProtoStruct({
+            request_id: requestId,
             requestId: requestId,
             tool: req.tool,
             argsDigest: '', // TODO: proper digest

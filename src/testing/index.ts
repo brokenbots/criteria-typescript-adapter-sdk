@@ -231,7 +231,7 @@ export class TestHost {
         const adapterEvt = evt.adapter as Record<string, unknown> | undefined;
         if (adapterEvt?.eventKind === "permission.request") {
           const payload = fromProtoStruct(adapterEvt.payload);
-          const reqId = payload.requestId as string | undefined;
+          const reqId = (payload.request_id as string | undefined) ?? (payload.requestId as string | undefined);
           if (reqId && this._autoGrantPermissions) {
             if (this._permissionDelayMs > 0) {
               setTimeout(() => {
