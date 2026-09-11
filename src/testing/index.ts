@@ -98,6 +98,7 @@ export class TestHost {
   private _autoGrantPermissions = false;
   private _permissionDelayMs = 0;
   private _onTeardown?: (server: grpc.Server) => void;
+  private _lastPermissionRequest?: Record<string, unknown>;
 
   constructor(opts: { binary?: string; config?: ServeConfig; autoGrantPermissions?: boolean; permissionDelayMs?: number; onTeardown?: (server: grpc.Server) => void }) {
     if (!opts.binary && !opts.config) {
@@ -231,6 +232,7 @@ export class TestHost {
         const adapterEvt = evt.adapter as Record<string, unknown> | undefined;
         if (adapterEvt?.eventKind === "permission.request") {
           const payload = fromProtoStruct(adapterEvt.payload);
+          this._lastPermissionRequest = payload;
           const reqId = (payload.request_id as string | undefined) ?? (payload.requestId as string | undefined);
           if (reqId && this._autoGrantPermissions) {
             if (this._permissionDelayMs > 0) {
@@ -286,6 +288,11 @@ export class TestHost {
     const permStream = this._permStream ?? (this.client as any).Permissions();
     permStream.write({ cancel: { requestId, reason: "denied by test" } });
     return new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  /** The most recent permission.request payload observed from the adapter (plain JS object). */
+  get lastPermissionRequest(): Record<string, unknown> | undefined {
+    return this._lastPermissionRequest;
   }
 
   /** Snapshot the current session. */

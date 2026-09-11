@@ -131,4 +131,76 @@ describe("v2 SDK", () => {
     await host.stop();
     await host2.stop();
   });
+
+  it("forwards adapter-supplied command fingerprints in permission.request payload", async () => {
+    const commandText = "echo hello";
+    const commands = ["echo one", "echo two"];
+    const host = new TestHost({
+      config: {
+        name: "fingerprint-adapter",
+        version: "1.0.0",
+        description: "test command fingerprint forwarding",
+        async execute(_req, helpers) {
+          await helpers.permission.request({
+            tool: "Bash",
+            args: { command: commandText, commands },
+            full_command_text: commandText,
+            commands,
+          });
+          await helpers.outcomes.finalize("success");
+        },
+      },
+    });
+
+    await host.openSession({ config: {}, secrets: {} });
+    const resultPromise = host.execute({ step: "s1", input: {}, allowedOutcomes: ["success"] });
+    // Wait until the permission request is observed.
+    while (host.lastPermissionRequest === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const reqId = (host.lastPermissionRequest!.request_id as string | undefined)
+      ?? (host.lastPermissionRequest!.requestId as string | undefined);
+    expect(reqId).toBeDefined();
+    await host.grantPermission(reqId!);
+
+    const result = await resultPromise;
+    expect(result.outcome).toBe("success");
+    expect(host.lastPermissionRequest!.tool).toBe("Bash");
+    expect(host.lastPermissionRequest!.full_command_text).toBe(commandText);
+    expect(host.lastPermissionRequest!.commands).toEqual(commands);
+    await host.stop();
+  });
+
+  it("derives command fingerprints from args when adapter omits top-level keys", async () => {
+    const commandText = "echo derived";
+    const commands = ["echo a", "echo b"];
+    const host = new TestHost({
+      config: {
+        name: "fallback-fingerprint-adapter",
+        version: "1.0.0",
+        description: "test command fingerprint fallback",
+        async execute(_req, helpers) {
+          await helpers.permission.request({ tool: "Bash", args: { command: commandText, commands } });
+          await helpers.outcomes.finalize("success");
+        },
+      },
+    });
+
+    await host.openSession({ config: {}, secrets: {} });
+    const resultPromise = host.execute({ step: "s1", input: {}, allowedOutcomes: ["success"] });
+    while (host.lastPermissionRequest === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const reqId = (host.lastPermissionRequest!.request_id as string | undefined)
+      ?? (host.lastPermissionRequest!.requestId as string | undefined);
+    expect(reqId).toBeDefined();
+    await host.grantPermission(reqId!);
+
+    const result = await resultPromise;
+    expect(result.outcome).toBe("success");
+    expect(host.lastPermissionRequest!.tool).toBe("Bash");
+    expect(host.lastPermissionRequest!.full_command_text).toBe(commandText);
+    expect(host.lastPermissionRequest!.commands).toEqual(commands);
+    await host.stop();
+  });
 });
