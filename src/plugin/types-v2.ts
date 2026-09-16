@@ -13,6 +13,7 @@ import type {
   LogEvent,
   PermissionEvent,
   PermissionDecision,
+  ToolCallResult,
   SnapshotRequest,
   SnapshotResponse,
   RestoreRequest,
@@ -32,6 +33,7 @@ export type {
   LogEvent,
   PermissionEvent,
   PermissionDecision,
+  ToolCallResult,
   SnapshotRequest,
   SnapshotResponse,
   RestoreRequest,
@@ -91,6 +93,31 @@ export interface PermissionHelper {
   }>;
 }
 
+/** Adapter tool-call helper (CRI-152). */
+export interface ToolsHelper {
+  /**
+   * Call another adapter's tool. Sends the permission.request AdapterEvent on
+   * the Execute stream with payload kind "adapter_tool" and blocks on the
+   * correlated PermissionEvent.tool_call_result (or the cancel of a denied
+   * call) with a bounded deadline, degrading typed on old hosts.
+   *
+   * @param call.target the full tool target, `adapter.<type>.<name>.tools[.<tool>]`.
+   * @param call.args the call arguments; a JSON object, or undefined/empty for none.
+   * @param opts.timeoutMs deadline override; defaults to 60s
+   *   (DEFAULT_TOOL_CALL_TIMEOUT_MS from ./toolcall.js, parity with the Go SDK).
+   * @returns the callee's outcome and typed outputs (undefined when none).
+   * @throws ToolCallError on a host call_error (`.code` carries the registry
+   *   value, including "host_unsupported" for the old-host degradation).
+   * @throws ToolCallDeniedError when the host denies the call.
+   * @throws ToolCallTimeoutError when the deadline passes with no grant at all.
+   * @throws ToolCallStreamClosedError when the Permissions stream ends first.
+   */
+  callAdapterTool(
+    call: { target: string; args?: Record<string, unknown> },
+    opts?: { timeoutMs?: number }
+  ): Promise<{ outcome: string; outputs: Record<string, unknown> | undefined }>;
+}
+
 /** Helpers injected into adapter callbacks. */
 export interface Helpers {
   session: SessionStore;
@@ -98,6 +125,7 @@ export interface Helpers {
   outcomes: OutcomesHelper;
   log: LogHelper;
   permission: PermissionHelper;
+  tools: ToolsHelper;
 }
 
 /** v2 adapter configuration passed to serve(). */

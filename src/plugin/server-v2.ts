@@ -6,10 +6,26 @@ import './long-polyfill.js';
 import * as fs from 'fs';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
+import { randomBytes } from 'node:crypto';
 import type { INamespace } from 'protobufjs';
 import { PROTOCOL_VERSION } from './handshake.js';
 import protoJson from '../proto/criteria/v2/adapter.json' with { type: 'json' };
 import type { ServeConfig, SessionStore, Helpers } from './types-v2.js';
+import {
+  argsDigest,
+  canonicalJSON,
+  joinToolCallResultOutputs,
+  parseAdapterToolTarget,
+  ToolCallError,
+  ToolCallDeniedError,
+  ToolCallStreamClosedError,
+  ToolCallTimeoutError,
+  CALL_ERROR_HOST_UNSUPPORTED,
+  DEFAULT_TOOL_CALL_TIMEOUT_MS,
+  EVENT_KIND_PERMISSION_REQUEST,
+  PAYLOAD_KIND_ADAPTER_TOOL,
+} from './toolcall.js';
+import type { ToolCallResultFragment } from './toolcall.js';
 
 // Idle server-streams must emit a Heartbeat on this cadence. The host's
 // stall detector, fed solely by the Log stream, declares a session crashed
@@ -92,6 +108,22 @@ interface PendingPerm {
   reject: (err: Error) => void;
 }
 
+/**
+ * One in-flight adapter tool call (CRI-152), keyed by the permission.request
+ * payload's request_id — the parallel of PendingPerm on the same Permissions
+ * stream. Fragments accumulate until the final chunk (or a typed call_error)
+ * resolves the entry; `grant` records the bare allow-grant signature that
+ * distinguishes an old host (grant only, no result) from a silent one.
+ */
+interface PendingToolCall {
+  grant: boolean;
+  fragments: ToolCallResultFragment[];
+  cancelled?: { reason?: string };
+  settled: boolean;
+  resolve: (result: { outcome: string; outputs: Record<string, unknown> | undefined }) => void;
+  reject: (err: Error) => void;
+}
+
 interface SessionState {
   sessionId: string;
   store: Map<string, unknown>;
@@ -101,6 +133,11 @@ interface SessionState {
   executeStream?: grpc.ServerWritableStream<unknown, unknown>;
   permissionsStream?: grpc.ServerDuplexStream<unknown, unknown>;
   pendingPermissions: Map<string, PendingPerm>;
+  pendingToolCalls: Map<string, PendingToolCall>;
+  // Set once a tool call on this session came back as a bare allow-grant with
+  // no PermissionEvent.tool_call_result within its deadline: the host predates
+  // adapter tools (ADR-0004 §9), so later calls fail fast without sending.
+  toolCallsUnsupported: boolean;
   logBuffer: unknown[];
   finalized: boolean;
 }
@@ -120,12 +157,85 @@ function ensureSession(sessionId: string): SessionState {
       secrets: new Map(),
       allowedOutcomes: [],
       pendingPermissions: new Map(),
+      pendingToolCalls: new Map(),
+      toolCallsUnsupported: false,
       logBuffer: [],
       finalized: false,
     };
     sessions.set(sessionId, s);
   }
   return s;
+}
+
+// newToolCallRequestID mints a correlation id for one tool call (parity with
+// the Go SDK's newToolCallRequestID). Falls back to a process-unique counter
+// if crypto/rand ever fails, so concurrent calls still cannot collide.
+let requestIDFallback = 0;
+function newToolCallRequestID(): string {
+  try {
+    return `adapter-tool-${randomBytes(16).toString('hex')}`;
+  } catch {
+    requestIDFallback += 1;
+    return `adapter-tool-fallback-${requestIDFallback}`;
+  }
+}
+
+// Removes a pending tool-call entry unless it has already settled (its entry
+// is gone from the map, e.g. resolved by a fragment after the caller stopped
+// waiting).
+function takePendingToolCall(requestId: string, sessionState: SessionState): PendingToolCall | undefined {
+  const entry = sessionState.pendingToolCalls.get(requestId);
+  if (!entry || entry.settled) {
+    return undefined;
+  }
+  sessionState.pendingToolCalls.delete(requestId);
+  return entry;
+}
+
+// Interprets a settled pending tool call into the helper's result — the TS
+// port of the Go SDK's finishToolCall: a cancellation is a denial, a
+// call_error is typed, fragments are reassembled in seq order, and empty
+// outputs decode to undefined.
+function finishToolCall(entry: PendingToolCall): { outcome: string; outputs: Record<string, unknown> | undefined } {
+  if (entry.cancelled) {
+    throw new ToolCallDeniedError(entry.cancelled.reason);
+  }
+  const first = entry.fragments[0];
+  const code = first.callError ?? '';
+  if (code !== '') {
+    throw new ToolCallError(code);
+  }
+  let outputsJson: Buffer;
+  if (entry.fragments.length === 1 && !first.chunk) {
+    // Single non-chunked message: outputs_json is the whole object.
+    outputsJson = Buffer.from(first.outputsJson ?? new Uint8Array(0));
+  } else {
+    outputsJson = joinToolCallResultOutputs(entry.fragments);
+  }
+  if (outputsJson.length === 0) {
+    return { outcome: first.outcome ?? '', outputs: undefined };
+  }
+  let outputs: Record<string, unknown>;
+  try {
+    outputs = JSON.parse(outputsJson.toString('utf8')) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(`adapter tool call outputs_json: ${(err as Error).message}`);
+  }
+  if (outputs === null || typeof outputs !== 'object' || Array.isArray(outputs)) {
+    throw new Error('adapter tool call outputs_json: cannot decode into an outputs object');
+  }
+  return { outcome: first.outcome ?? '', outputs };
+}
+
+// Resolves the entry with finishToolCall's result, or rejects it with the
+// typed failure the result interpretation produced (denial, call_error,
+// reassembly or decode error).
+function settleToolCall(entry: PendingToolCall): void {
+  try {
+    entry.resolve(finishToolCall(entry));
+  } catch (err) {
+    entry.reject(err as Error);
+  }
 }
 
 // ─── Helpers factory ─────────────────────────────────────────────────────────
@@ -219,18 +329,22 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
     async request(req: { tool: string; args?: Record<string, unknown> }): Promise<{ decision: 'allow' | 'deny'; reason?: string }> {
       const requestId = `perm-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-      // Build args digest (simplified: JSON.stringify)
-      const argsJson = req.args ? JSON.stringify(req.args) : '{}';
+      const args = req.args ?? {};
+      const argsJson = JSON.stringify(args);
       const preview = argsJson.length > 200 ? argsJson.slice(0, 200) + '...' : argsJson;
+      // sha256 over canonical JSON — byte-identical with the host's and the Go
+      // SDK's ArgsDigest (criteria/v2/canonical.go); the documented formula
+      // behind PermissionRequest.args_digest (CRI-154).
+      const digest = argsDigest(args);
 
       // Send permission.request event on Execute stream
       const event = {
         adapter: {
-          eventKind: 'permission.request',
+          eventKind: EVENT_KIND_PERMISSION_REQUEST,
           payload: toProtoStruct({
             requestId: requestId,
             tool: req.tool,
-            argsDigest: '', // TODO: proper digest
+            argsDigest: digest,
             argsPreview: preview,
           }),
         },
@@ -260,12 +374,137 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
     },
   };
 
+  const toolsHelper = {
+    /**
+     * Call another adapter's tool (CRI-152). Sends the permission.request
+     * AdapterEvent on the Execute stream with payload kind "adapter_tool"
+     * (request_id, target, tool, args, args_digest) and blocks on the
+     * correlated PermissionEvent.tool_call_result (or the cancel of a denied
+     * call) with a bounded deadline. Degrades typed on old hosts: a bare
+     * allow-grant with no result inside the deadline resolves with a
+     * ToolCallError code "host_unsupported" and caches the session, so later
+     * calls fail fast without sending (ADR-0004 §9).
+     *
+     * @returns the callee's outcome and typed outputs; outputs is undefined
+     *   when the callee emitted none.
+     * @throws ToolCallDeniedError when the host denies the call (cancel).
+     * @throws ToolCallError when the host answers with a call_error (code
+     *   carries the registry value) or when the old-host signature is
+     *   detected.
+     * @throws ToolCallTimeoutError when the deadline passes with no grant at
+     *   all (the session is NOT cached as unsupported in that case).
+     * @throws ToolCallStreamClosedError when the Permissions stream ends
+     *   while the call is in flight.
+     */
+    async callAdapterTool(
+      call: { target: string; args?: Record<string, unknown> },
+      opts?: { timeoutMs?: number }
+    ): Promise<{ outcome: string; outputs: Record<string, unknown> | undefined }> {
+      if (!call || typeof call.target !== 'string' || call.target === '') {
+        throw new Error('adapter tool call requires a target (adapter.<type>.<name>.tools.<tool>)');
+      }
+      if (session.toolCallsUnsupported) {
+        throw new ToolCallError(CALL_ERROR_HOST_UNSUPPORTED);
+      }
+      // Tool name only (no adapter prefix). An unparseable target is still
+      // sent — the host answers with the typed malformed_target call_error —
+      // but the bare whole-surface form has no tool to call at all.
+      const tool = parseAdapterToolTarget(call.target)?.tool ?? '';
+      if (tool === '') {
+        throw new Error(`adapter tool call requires a tool-scoped target (adapter.<type>.<name>.tools.<tool>), got "${call.target}"`);
+      }
+
+      // The wire args are the canonical-JSON-normalized object; nil is sent
+      // as an empty object (Go parity: json.Unmarshal into a map leaves nil,
+      // which buildToolCallPayload replaces with an empty object). Non-object
+      // args are rejected before sending.
+      const canonical = canonicalJSON(call.args ?? null);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(canonical);
+      } catch (err) {
+        throw new Error(`adapter tool call "${tool}" args must be a JSON object: ${(err as Error).message}`);
+      }
+      if (parsed !== null && (typeof parsed !== 'object' || Array.isArray(parsed))) {
+        throw new Error(`adapter tool call "${tool}" args must be a JSON object`);
+      }
+      const args = parsed === null ? {} : (parsed as Record<string, unknown>);
+      const digest = argsDigest(args);
+      const preview = canonical.length > 200 ? canonical.slice(0, 200) + '...' : canonical;
+      const timeoutMs = opts?.timeoutMs ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
+      const requestId = newToolCallRequestID();
+
+      return new Promise((resolve, reject) => {
+        const entry: PendingToolCall = {
+          grant: false,
+          fragments: [],
+          settled: false,
+          resolve: (result) => {
+            if (entry.settled) return;
+            entry.settled = true;
+            clearTimeout(timer);
+            resolve(result);
+          },
+          reject: (err) => {
+            if (entry.settled) return;
+            entry.settled = true;
+            clearTimeout(timer);
+            reject(err);
+          },
+        };
+
+        const timer = setTimeout(() => {
+          if (session.pendingToolCalls.get(requestId) !== entry) {
+            return; // already settled by a correlated reply
+          }
+          session.pendingToolCalls.delete(requestId);
+          if (entry.grant) {
+            // Bare allow-grant with no result within the deadline: the host
+            // predates adapter tools (ADR-0004 §9). Cache the session so
+            // later calls fail fast without sending.
+            session.toolCallsUnsupported = true;
+            entry.reject(new ToolCallError(CALL_ERROR_HOST_UNSUPPORTED));
+          } else {
+            entry.reject(new ToolCallTimeoutError(`adapter tool call "${tool}" to ${call.target} timed out after ${timeoutMs}ms`));
+          }
+        }, timeoutMs);
+
+        session.pendingToolCalls.set(requestId, entry);
+        if (!session.executeStream) {
+          session.pendingToolCalls.delete(requestId);
+          entry.reject(new Error('adapter tool call requires an open Execute stream'));
+          return;
+        }
+        try {
+          session.executeStream.write({
+            adapter: {
+              eventKind: EVENT_KIND_PERMISSION_REQUEST,
+              payload: toProtoStruct({
+                kind: PAYLOAD_KIND_ADAPTER_TOOL,
+                request_id: requestId,
+                target: call.target,
+                tool,
+                args,
+                args_digest: digest,
+                args_preview: preview,
+              }),
+            },
+          });
+        } catch (err) {
+          session.pendingToolCalls.delete(requestId);
+          entry.reject(new Error(`adapter tool call "${tool}": send permission.request: ${(err as Error).message}`));
+        }
+      });
+    },
+  };
+
   return {
     session: sessionStore,
     secrets: secretsHelper,
     outcomes: outcomesHelper,
     log: logHelper,
     permission: permissionHelper,
+    tools: toolsHelper,
   };
 }
 
@@ -568,6 +807,9 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
           const ev = msg as Record<string, unknown>;
           const reqEv = ev.request as Record<string, string> | undefined;
           const cancelEv = ev.cancel as Record<string, string> | undefined;
+          // proto-loader (oneofs: true) exposes the oneof members as camelCase
+          // fields; tool_call_result answers an adapter tool call.
+          const resultEv = ev.toolCallResult as ToolCallResultFragment | undefined;
 
           if (reqEv) {
             const id = reqEv.requestId;
@@ -577,6 +819,15 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
               if (pending) {
                 session.pendingPermissions.delete(id);
                 pending.resolve({ decision: 'allow', reason: reqEv.reason });
+                break;
+              }
+            }
+            // Mark the tool call the grant correlates with: an allow-grant
+            // with no following tool_call_result is the old-host signature.
+            for (const session of sessions.values()) {
+              const entry = session.pendingToolCalls.get(id);
+              if (entry) {
+                entry.grant = true;
                 break;
               }
             }
@@ -594,28 +845,64 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
                 break;
               }
             }
+            // A denied tool call never arrives as tool_call_result — it is
+            // answered with cancel. A cancel for an unknown id (e.g. a late
+            // denial after the caller timed out) is dropped.
+            for (const session of sessions.values()) {
+              const entry = takePendingToolCall(id, session);
+              if (entry) {
+                entry.cancelled = { reason: cancelEv.reason };
+                settleToolCall(entry);
+                break;
+              }
+            }
+          }
+
+          if (resultEv) {
+            // Accumulate the fragment and resolve on the final chunk (or on a
+            // typed call_error, which is never chunked). Results for unknown
+            // request ids (e.g. a reply after the caller timed out) are
+            // dropped, mirroring the Go SDK's dispatch.
+            const id = resultEv.requestId;
+            for (const session of sessions.values()) {
+              const entry = session.pendingToolCalls.get(id);
+              if (!entry || entry.settled) {
+                continue;
+              }
+              entry.fragments.push(resultEv);
+              const code = resultEv.callError ?? '';
+              if (code !== '' || !resultEv.chunk || resultEv.chunk.final) {
+                session.pendingToolCalls.delete(id);
+                settleToolCall(entry);
+              }
+              break;
+            }
           }
         };
 
         call.on('data', handleMessage);
-        call.on('end', () => {
-          // Drain all pending permissions with deny
+        // The stream is gone (client half-close, transport error or a client
+        // cancel): drain every pending permission with deny and every
+        // in-flight adapter tool call with a typed stream-closed error — no
+        // reply can ever arrive. Draining twice is safe; entries settle once.
+        const drainStreams = () => {
           for (const session of sessions.values()) {
             for (const [, pending] of session.pendingPermissions) {
               pending.resolve({ decision: 'deny', reason: 'Permissions stream closed' });
             }
             session.pendingPermissions.clear();
+            for (const [, entry] of session.pendingToolCalls) {
+              entry.reject(new ToolCallStreamClosedError('adapter tool call: permissions stream closed'));
+            }
+            session.pendingToolCalls.clear();
           }
+        };
+        call.on('end', () => {
+          drainStreams();
           call.end();
         });
-        call.on('error', () => {
-          for (const session of sessions.values()) {
-            for (const [, pending] of session.pendingPermissions) {
-              pending.resolve({ decision: 'deny', reason: 'Permissions stream error' });
-            }
-            session.pendingPermissions.clear();
-          }
-        });
+        call.on('error', drainStreams);
+        call.on('cancelled', drainStreams);
       },
 
       Pause: (_call: grpc.ServerUnaryCall<unknown, unknown>, callback: grpc.sendUnaryData<unknown>) => {

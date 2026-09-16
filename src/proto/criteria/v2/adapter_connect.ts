@@ -6,8 +6,10 @@
 // against v1 must be recompiled against these bindings.
 //
 // The Permissions RPC is a bidirectional stream: the HOST (gRPC client) sends
-// PermissionEvent messages (request=allow, cancel=deny) and the ADAPTER (gRPC
-// server) sends PermissionDecision acknowledgments back. Adapters that embed
+// PermissionEvent messages (request=allow-grant, cancel=deny, and — for
+// adapter tool calls — tool_call_result=the callee's completed result) and
+// the ADAPTER (gRPC server) sends PermissionDecision acknowledgments back.
+// Adapters that embed
 // sdk/adapterhost.UnimplementedPermissions receive post-hoc enforcement
 // (outcome override to needs_review on denial); adapters that implement
 // Permissions themselves (e.g. copilot) get blocking enforcement so the tool

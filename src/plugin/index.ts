@@ -28,6 +28,7 @@ export type {
   OutcomesHelper,
   LogHelper,
   PermissionHelper,
+  ToolsHelper,
   SecretDecl,
   SchemaDef,
   ConfigField,
@@ -58,6 +59,35 @@ export {
 } from './handshake.js';
 
 export { startServerV2, stopServerV2 };
+
+// Re-export the adapter tool-call surface (CRI-152, parity with the Go SDK's
+// adapterhost package).
+export {
+  CAPABILITY_ADAPTER_TOOLS,
+  PAYLOAD_KIND_ADAPTER_TOOL,
+  EVENT_KIND_PERMISSION_REQUEST,
+  DEFAULT_TOOL_CALL_TIMEOUT_MS,
+  CALL_ERROR_CAPABILITY_MISSING,
+  CALL_ERROR_UNKNOWN_ADAPTER,
+  CALL_ERROR_UNKNOWN_TOOL,
+  CALL_ERROR_SELF_CALL,
+  CALL_ERROR_NOT_YET_SUPPORTED,
+  CALL_ERROR_DEPTH_EXCEEDED,
+  CALL_ERROR_CYCLE_DETECTED,
+  CALL_ERROR_CALLEE_CRASH,
+  CALL_ERROR_CALLEE_TIMEOUT,
+  CALL_ERROR_CANCELED,
+  CALL_ERROR_HOST_UNSUPPORTED,
+  ToolCallError,
+  ToolCallDeniedError,
+  ToolCallTimeoutError,
+  ToolCallStreamClosedError,
+  canonicalJSON,
+  argsDigest,
+  parseAdapterToolTarget,
+  joinToolCallResultOutputs,
+} from './toolcall.js';
+export type { ToolCallResultFragment } from './toolcall.js';
 
 /**
  * Serve a v2 adapter configuration.
