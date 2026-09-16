@@ -6,8 +6,10 @@
 // against v1 must be recompiled against these bindings.
 //
 // The Permissions RPC is a bidirectional stream: the HOST (gRPC client) sends
-// PermissionEvent messages (request=allow, cancel=deny) and the ADAPTER (gRPC
-// server) sends PermissionDecision acknowledgments back. Adapters that embed
+// PermissionEvent messages (request=allow-grant, cancel=deny, and — for
+// adapter tool calls — tool_call_result=the callee's completed result) and
+// the ADAPTER (gRPC server) sends PermissionDecision acknowledgments back.
+// Adapters that embed
 // sdk/adapterhost.UnimplementedPermissions receive post-hoc enforcement
 // (outcome override to needs_review on denial); adapters that implement
 // Permissions themselves (e.g. copilot) get blocking enforcement so the tool
@@ -18,25 +20,25 @@ syntax = "proto3";
 
 package criteria.v2;
 
-option go_package = "github.com/brokenbots/criteria-adapter-proto/criteria/v2;criteriav2";
-
 import "criteria/v2/options.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
+option go_package = "github.com/brokenbots/criteria-adapter-proto/criteria/v2;criteriav2";
+
 // AdapterService is the out-of-process adapter contract for Criteria v2.
 service AdapterService {
-  rpc Info(InfoRequest)                          returns (InfoResponse);
-  rpc OpenSession(OpenSessionRequest)            returns (OpenSessionResponse);
-  rpc Execute(ExecuteRequest)                    returns (stream ExecuteEvent);
-  rpc Log(LogRequest)                            returns (stream LogEvent);
-  rpc Permissions(stream PermissionEvent)        returns (stream PermissionDecision);
-  rpc Pause(PauseRequest)                        returns (PauseResponse);
-  rpc Resume(ResumeRequest)                      returns (ResumeResponse);
-  rpc Snapshot(SnapshotRequest)                  returns (SnapshotResponse);
-  rpc Restore(RestoreRequest)                    returns (RestoreResponse);
-  rpc Inspect(InspectRequest)                    returns (InspectResponse);
-  rpc CloseSession(CloseSessionRequest)          returns (CloseSessionResponse);
+  rpc Info(InfoRequest) returns (InfoResponse);
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+  rpc Execute(ExecuteRequest) returns (stream ExecuteEvent);
+  rpc Log(LogRequest) returns (stream LogEvent);
+  rpc Permissions(stream PermissionEvent) returns (stream PermissionDecision);
+  rpc Pause(PauseRequest) returns (PauseResponse);
+  rpc Resume(ResumeRequest) returns (ResumeResponse);
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
+  rpc Restore(RestoreRequest) returns (RestoreResponse);
+  rpc Inspect(InspectRequest) returns (InspectResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
 }
 
 // ─── Chunked framing ────────────────────────────────────────────────────────
@@ -51,9 +53,9 @@ service AdapterService {
 // *_json field instead.  Receivers concatenate *_json bytes in seq order and
 // then unmarshal the result back to the typed form.
 message Chunk {
-  uint32 seq   = 1;
+  uint32 seq = 1;
   uint32 total = 2;
-  bool   final = 3;
+  bool final = 3;
   reserved 100 to 999;
 }
 
@@ -64,8 +66,8 @@ message Chunk {
 // the crash-recovery policy.  SDKs provide a heartbeat helper so adapter
 // authors do not need to manage timers.
 message Heartbeat {
-  string                    stream_name = 1;
-  google.protobuf.Timestamp sent_at     = 2;
+  string stream_name = 1;
+  google.protobuf.Timestamp sent_at = 2;
   reserved 100 to 999;
 }
 
@@ -73,11 +75,11 @@ message Heartbeat {
 
 // ConfigFieldProto describes a single field in an adapter schema.
 message ConfigFieldProto {
-  string type        = 1;  // "string" | "number" | "bool" | "boolean" (alias for "bool") | "list_string"
-  bool   required    = 2;
+  string type = 1; // "string" | "number" | "bool" | "boolean" (alias for "bool") | "list_string"
+  bool required = 2;
   string description = 3;
   string default_str = 4;
-  bool   sensitive   = 5;  // marks the field as a taint-source for downstream tools
+  bool sensitive = 5; // marks the field as a taint-source for downstream tools
   reserved 100 to 999;
 }
 
@@ -94,41 +96,81 @@ message InfoRequest {
 }
 
 message InfoResponse {
-  string name                           = 1;
-  string version                        = 2;
-  string description                    = 3;
-  repeated string capabilities          = 4;
-  repeated string platforms             = 5;
-  string sdk_protocol_version           = 6;
-  string source_url                     = 7;
-  AdapterSchemaProto config_schema      = 8;
-  AdapterSchemaProto input_schema       = 9;
-  AdapterSchemaProto output_schema      = 10;  // NEW v2: schema for step outputs
-  map<string, string> secrets           = 11;  // declared secret names → descriptions
-  repeated string permissions           = 12;
+  string name = 1;
+  string version = 2;
+  string description = 3;
+  // capabilities is a free-form vocabulary of well-known capability strings
+  // the adapter declares at the Info handshake so the host can gate behavior
+  // on them; unknown values are ignored for forward-compatibility.
+  // Well-known values:
+  //
+  //   parallel_safe — Execute is safe to run concurrently with other steps.
+  //   adapter_tools — the adapter speaks the tool-call flow: it emits
+  //                   permission.request AdapterEvents with payload kind
+  //                   "adapter_tool" and consumes PermissionEvent
+  //                   .tool_call_result answers (see PermissionEvent).
+  //                   The host gates per-call, not at session open: a
+  //                   tool_call from an adapter that never declared this is
+  //                   answered with the typed call_error capability_missing.
+  repeated string capabilities = 4;
+  repeated string platforms = 5;
+  string sdk_protocol_version = 6;
+  string source_url = 7;
+  AdapterSchemaProto config_schema = 8;
+  AdapterSchemaProto input_schema = 9;
+  AdapterSchemaProto output_schema = 10; // NEW v2: schema for step outputs
+  map<string, string> secrets = 11; // declared secret names → descriptions
+  repeated string permissions = 12;
   repeated string compatible_environments = 13;
-  string container_image                = 14;
+  string container_image = 14;
   // supported_features lists optional capabilities this adapter implements.
   // Well-known values: "pause", "resume", "snapshot", "restore", "inspect".
   // The host gates UI and behavior on this list; unknown values are ignored
   // for forward-compatibility.  Empty = none of the optional features.
-  repeated string supported_features    = 15;  // NEW v2 (D76)
+  repeated string supported_features = 15; // NEW v2 (D76)
   // max_chunk_bytes is the maximum payload the adapter accepts in a single
   // message field before requiring chunked framing.  0 = use default (4 MiB).
   // The host uses min(host_max, adapter_max) when chunking outbound payloads.
-  uint32 max_chunk_bytes                = 16;  // NEW v2 (D78)
+  uint32 max_chunk_bytes = 16; // NEW v2 (D78)
+  // tools advertises the tools the adapter offers, so the host and compiler
+  // can discover them without a second mechanism.  Dynamic-tools adapters
+  // (mcp, CRI-172) populate it from tools/list at OpenSession; static-tools
+  // adapters MAY populate it too.  When present, the compiler consumes this
+  // list for the static tool-name check (CRI-173 upgrade path) — this field
+  // must land on the wire BEFORE the compiler starts consuming it.  Absent
+  // = the compiler has no advertised list and falls back to its static
+  // configuration.
+  //
+  // InfoResponse is sent at every handshake (and re-verification), so a
+  // large tools list is acceptable but adapters should keep descriptions
+  // short — the list multiplies across every handshake.
+  repeated ToolInfo tools = 17; // NEW v2 (CRI-171)
+  reserved 100 to 999;
+}
+
+// ToolInfo describes a single tool in InfoResponse.tools: its wire name,
+// a short human-readable description, and (optionally) a JSON-schema sketch
+// of its arguments.
+message ToolInfo {
+  string name = 1;
+  string description = 2;
+  // args_schema_json is a JSON-schema sketch of the tool's arguments.  It is
+  // a sketch only — a hint for callers and the compiler — NOT a second
+  // schema system; do not build validation on it.  Empty/unset when the
+  // tool takes no arguments or the adapter does not know the shape.
+  optional string args_schema_json = 3;
   reserved 100 to 999;
 }
 
 // ─── Session lifecycle ───────────────────────────────────────────────────────
 
 message OpenSessionRequest {
-  string              session_id       = 1;
-  map<string, string> config           = 2;
+  string session_id = 1;
+  map<string, string> config = 2;
   // secrets carries secret values for this session.  Redaction-aware log
   // pipelines MUST mask or refuse to log any field annotated sensitive.
-  map<string, string> secrets          = 3 [(criteria.v2.sensitive) = true];
-  repeated string     allowed_outcomes = 4;
+  map<string, string> secrets = 3 [(criteria.v2.sensitive) = true];
+  repeated string allowed_outcomes = 4;
   // field 7 is reserved for environment_context (deferred to WS09 — the
   // environment block grammar is not yet locked).  Adapters that need
   // environment-derived context in v2 read it from the config map.
@@ -153,11 +195,11 @@ message CloseSessionResponse {
 // ─── Execute ─────────────────────────────────────────────────────────────────
 
 message ExecuteRequest {
-  string              session_id       = 1;
-  string              step_name        = 2;
-  map<string, string> input            = 3;
-  map<string, string> secret_inputs    = 4 [(criteria.v2.sensitive) = true];
-  repeated string     allowed_outcomes = 5;
+  string session_id = 1;
+  string step_name = 2;
+  map<string, string> input = 3;
+  map<string, string> secret_inputs = 4 [(criteria.v2.sensitive) = true];
+  repeated string allowed_outcomes = 5;
   reserved 100 to 999;
 }
 
@@ -165,40 +207,47 @@ message ExecuteRequest {
 // event_kind is a dot-separated identifier; well-known values are registered
 // in docs/adapters.md (WS39).  Unknown kinds are forwarded unchanged.
 //
+// Well-known event_kind "permission.request" is a blocking permission or
+// adapter-tool-call request: the adapter emits it on the Execute stream and
+// blocks until the host answers on the Permissions stream.  For adapter tool
+// calls (payload kind "adapter_tool") the completed result returns as
+// PermissionEvent.tool_call_result, correlated by request_id — see
+// PermissionEvent for the full payload contract.
+//
 // Chunked encoding: when chunk is non-nil, payload is nil and payload_json
 // carries the raw JSON bytes of this fragment.  Reassemble payload_json bytes
 // in Chunk.seq order and unmarshal the result to google.protobuf.Struct.
 message AdapterEvent {
-  string                    event_kind   = 1;
+  string event_kind = 1;
   // payload is set when chunk == nil (non-chunked or single-message payload).
-  google.protobuf.Struct    payload      = 2;
-  google.protobuf.Timestamp emitted_at   = 3;
-  Chunk                     chunk        = 4;
+  google.protobuf.Struct payload = 2;
+  google.protobuf.Timestamp emitted_at = 3;
+  Chunk chunk = 4;
   // payload_json carries the JSON-encoded bytes of a payload fragment when
   // chunk is non-nil.  Collect all fragments in Chunk.seq order, concatenate,
   // then unmarshal to google.protobuf.Struct.
-  bytes                     payload_json = 5;
+  bytes payload_json = 5;
   reserved 100 to 999;
 }
 
 // ToolInvocation is emitted when the adapter invokes an external tool.
 message ToolInvocation {
-  string                    tool_name   = 1;
-  google.protobuf.Struct    args        = 2;
-  google.protobuf.Timestamp invoked_at  = 3;
+  string tool_name = 1;
+  google.protobuf.Struct args = 2;
+  google.protobuf.Timestamp invoked_at = 3;
   reserved 100 to 999;
 }
 
 message ExecuteResult {
-  string              outcome      = 1;
-  Chunk               chunk        = 3;
+  string outcome = 1;
+  Chunk chunk = 3;
   // outputs_json is the sole output channel: the JSON-encoded bytes of the
   // outputs object. Values are encoded with their native JSON type
   // (string/number/bool/object/array), so the host decodes them to native cty
   // types — no jsondecode() needed in workflows. When chunk is non-nil, collect
   // all fragments in Chunk.seq order and concatenate before decoding; when chunk
   // is nil, outputs_json is the whole object in one message.
-  bytes               outputs_json = 4;
+  bytes outputs_json = 4;
   // Field 2 was the legacy map<string,string> outputs channel, removed in the
   // v2 typed-outputs cutover. Do not reuse.
   reserved 2;
@@ -210,10 +259,10 @@ message ExecuteResult {
 // Log lines are NOT included here; they flow through the Log RPC.
 message ExecuteEvent {
   oneof event {
-    AdapterEvent    adapter   = 1;
-    ToolInvocation  tool      = 2;
-    ExecuteResult   result    = 3;
-    Heartbeat       heartbeat = 4;
+    AdapterEvent adapter = 1;
+    ToolInvocation tool = 2;
+    ExecuteResult result = 3;
+    Heartbeat heartbeat = 4;
   }
   reserved 100 to 999;
 }
@@ -222,7 +271,7 @@ message ExecuteEvent {
 
 message LogRequest {
   string session_id = 1;
-  string step_name  = 2;
+  string step_name = 2;
   reserved 100 to 999;
 }
 
@@ -236,25 +285,27 @@ message LogRequest {
 // line is raw bytes so it is safe to split at any byte boundary without
 // breaking UTF-8; callers that need a string must decode after reassembly.
 message LogEvent {
-  string                    session_id  = 1;
-  string                    step_name   = 2;
-  string                    stream_name = 3;
-  bytes                     line        = 4;
-  google.protobuf.Timestamp timestamp   = 5;
-  Heartbeat                 heartbeat   = 6;
-  Chunk                     chunk       = 7;
+  string session_id = 1;
+  string step_name = 2;
+  string stream_name = 3;
+  bytes line = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  Heartbeat heartbeat = 6;
+  Chunk chunk = 7;
   reserved 100 to 999;
 }
 
 // ─── Permissions ─────────────────────────────────────────────────────────────
 
 // PermissionRequest is sent by the adapter to request permission for a tool call.
-// args_digest = sha256(canonical_json(args)) per the JCS / RFC 8785 algorithm
-// (see internal/adapter/audit/canonical.go).
+// args_digest = sha256(canonical_json(args)), computed with the canonical-JSON
+// helper exposed by this module (criteriav2.ArgsDigest in the Go bindings) so
+// the host and every SDK digest args to identical bytes — see that helper for
+// the exact algorithm contract.
 message PermissionRequest {
-  string request_id   = 1;
-  string tool         = 2;
-  string args_digest  = 3;  // sha256(canonical_json(args))
+  string request_id = 1;
+  string tool = 2;
+  string args_digest = 3; // sha256(canonical_json(args))
   string args_preview = 4;
   // field 5 is reserved for full args (google.protobuf.Struct args).
   // Adding arg-aware policy (D83) without breaking the v2 wire.
@@ -268,17 +319,114 @@ message PermissionRequest {
 // PermissionEvent with cancel set; the adapter unblocks the pending request
 // and returns Denied to the Copilot SDK so the tool does not run.
 // reason is optional human-readable text (e.g. "no matching allow_tools entry").
+//
+// For adapter tool calls, cancel is the deny path: the tool call is refused
+// (the callee is never invoked) and the calling adapter treats cancel as the
+// denial of the correlated call. A *typed failure of an issued call* is
+// delivered as ToolCallResult.call_error instead — never as cancel — so the
+// SDK can distinguish "not allowed" from "failed".
 message PermissionCancel {
   string request_id = 1;
-  string reason     = 2;
+  string reason = 2;
   reserved 100 to 999;
 }
 
-// PermissionEvent is the client-to-server message on the Permissions stream.
+// ToolCallResult returns the callee's completed result of an adapter tool
+// call from the HOST to the ADAPTER on the Permissions stream. It is carried
+// in PermissionEvent.tool_call_result and correlated with the caller's
+// `permission.request` AdapterEvent payload (kind "adapter_tool", documented
+// on PermissionEvent) by request_id.
+//
+// Exactly one of the two result shapes is present:
+//
+//   - success: outcome is set to the callee's ExecuteResult outcome and
+//     outputs_json carries the callee's typed outputs (nil when the callee
+//     emitted none). The callee's outcome is data on the result — it is not
+//     an FSM outcome; the callee never enters the state machine.
+//   - typed failure: call_error is non-empty. outcome and outputs_json are
+//     then meaningless and must be ignored.
+//
+// A denied call never arrives as ToolCallResult: it is delivered as
+// PermissionEvent.cancel, so SDKs can distinguish "the tool call was not
+// allowed" from "the tool call failed" (call_error) and from "the tool call
+// succeeded" (outcome).
+//
+// outputs_json reuses the ExecuteResult.outputs_json chunking contract
+// verbatim: when chunk is non-nil, collect all fragments in Chunk.seq order,
+// concatenate, then decode; when chunk is nil, outputs_json is the whole
+// object in one message.
+message ToolCallResult {
+  string request_id = 1; // correlates with the caller's permission.request payload
+  // outcome is the callee's ExecuteResult outcome; meaningless when
+  // call_error is set.
+  string outcome = 2;
+  // chunk is non-nil when outputs_json is a fragment.
+  Chunk chunk = 3;
+  // outputs_json is the JSON-encoded bytes of the callee's outputs object,
+  // with the same native-JSON-type encoding as ExecuteResult.outputs_json.
+  // When chunk is non-nil, collect all fragments in Chunk.seq order,
+  // concatenate, then decode; when chunk is nil, outputs_json is the whole
+  // object in one message.
+  bytes outputs_json = 4;
+  // call_error carries a well-known typed host-side failure for the tool
+  // call; non-empty means typed failure (outcome and outputs_json are then
+  // meaningless). It is a free-form registry, not an enum: unknown values
+  // must round-trip unchanged. Well-known values:
+  //
+  //   unknown_adapter    — the target names no declared adapter instance
+  //   unknown_tool       — the callee presents no such tool
+  //   capability_missing — the callee presents no tool surface for the call
+  //   host_unsupported   — the host predates adapter tools (a granted call
+  //                        came back as a bare allow-grant with no result)
+  //   depth_exceeded     — the tool-call stack exceeded policy.max_tool_depth
+  //   cycle_detected     — runtime cycle detection fired on the call graph
+  //   callee_crash       — the callee's Execute failed before returning a result
+  //   callee_timeout     — the callee did not answer within its deadline
+  //   canceled           — the call was abandoned (run canceled) while in flight
+  //   not_yet_supported  — a planned behavior is not implemented yet
+  //                        (e.g. pause/resume while a call is in flight)
+  //   self_call          — the callee is the calling adapter's own instance
+  string call_error = 5;
+  reserved 100 to 999;
+}
+
+// PermissionEvent is the host-to-adapter message on the Permissions stream.
+// It is how the host answers a blocking `permission.request` AdapterEvent
+// (emitted by the adapter on the Execute stream), correlated by request_id:
+//
+//   - request: allow-grant. The adapter may proceed with the permitted call.
+//   - cancel: deny. Callers treat cancel as the deny of the correlated
+//     request; the call never runs.
+//   - tool_call_result: the completed result of an adapter tool call
+//     (success or typed failure) — see ToolCallResult. Results NEVER ride
+//     PermissionDecision; see that message's comment for why.
+//
+// Adapter tool-call request payload — the call itself needs no new message;
+// it rides the existing `permission.request` AdapterEvent on the Execute
+// stream, in map form:
+//
+//	{
+//	  "kind":         "adapter_tool", // distinguishes tool calls from other permission requests
+//	  "request_id":   "<minted by the calling adapter>",
+//	  "target":       "adapter.<type>.<name>.tools[.<tool>]", // full target string
+//	  "tool":         "<tool>", // the tool name only (no adapter prefix)
+//	  "args":         { ... }, // JSON object of call arguments
+//	  "args_digest":  "<sha256(canonical_json(args))>", // see criteriav2.ArgsDigest
+//	  "args_preview": "<optional short printable preview of args>"
+//	}
+//
+// A granted call is answered with request (allow-grant) followed by
+// tool_call_result; a denied call is answered with cancel. A granted call
+// answered only by a bare request with no subsequent tool_call_result means
+// the host predates adapter tools: callers surface that as the typed
+// host_unsupported failure. Adapters advertise tool-call support with the
+// "adapter_tools" capability string in InfoResponse.capabilities; the host
+// gates per-call on that declaration (see InfoResponse.capabilities).
 message PermissionEvent {
   oneof event {
     PermissionRequest request = 1;
-    PermissionCancel  cancel  = 2;
+    PermissionCancel cancel = 2;
+    ToolCallResult tool_call_result = 3;
   }
   reserved 100 to 999;
 }
@@ -286,11 +434,18 @@ message PermissionEvent {
 // PermissionDecision is the server-to-client message on the Permissions stream.
 // The host answers requests in any order; multiple requests may be in flight.
 // heartbeat is non-nil when this message is a liveness ping with no decision.
+//
+// PermissionDecision is strictly an ACK channel: it carries only
+// allow/deny acknowledgments and liveness pings. Tool-call results NEVER ride
+// it — the host drains and discards PermissionDecision messages, so anything
+// sent here would flow into the drain and never reach the caller. Results
+// travel on PermissionEvent (tool_call_result) in the host-to-adapter
+// direction instead.
 message PermissionDecision {
-  string    request_id = 1;
-  string    decision   = 2;  // "allow" | "deny"
-  string    reason     = 3;
-  Heartbeat heartbeat  = 4;
+  string request_id = 1;
+  string decision = 2; // "allow" | "deny"
+  string reason = 3;
+  Heartbeat heartbeat = 4;
   reserved 100 to 999;
 }
 
@@ -322,14 +477,14 @@ message SnapshotRequest {
 }
 
 message SnapshotResponse {
-  bytes  state          = 1 [(criteria.v2.sensitive) = true];
+  bytes state = 1 [(criteria.v2.sensitive) = true];
   uint32 schema_version = 2;
   reserved 100 to 999;
 }
 
 message RestoreRequest {
-  string session_id     = 1;
-  bytes  state          = 2 [(criteria.v2.sensitive) = true];
+  string session_id = 1;
+  bytes state = 2 [(criteria.v2.sensitive) = true];
   uint32 schema_version = 3;
   reserved 100 to 999;
 }
@@ -343,8 +498,8 @@ message RestoreResponse {
 // The host surfaces this as: "snapshot taken at v<have>, adapter speaks v<want>
 // only — refusing to restore".
 message SnapshotVersionMismatch {
-  uint32 have = 1;  // schema_version from the RestoreRequest
-  uint32 want = 2;  // schema_version this adapter can handle
+  uint32 have = 1; // schema_version from the RestoreRequest
+  uint32 want = 2; // schema_version this adapter can handle
   reserved 100 to 999;
 }
 
@@ -357,17 +512,17 @@ message InspectRequest {
 
 // InspectField is an adapter-defined structured field for operator UIs.
 message InspectField {
-  string               key   = 1;
-  string               label = 2;  // human-friendly label for UIs
+  string key = 1;
+  string label = 2; // human-friendly label for UIs
   google.protobuf.Value value = 3;
   reserved 100 to 999;
 }
 
 message InspectResponse {
-  string                    current_step              = 1;
-  uint32                    pending_permission_count  = 2;
-  google.protobuf.Timestamp last_activity_at          = 3;
-  repeated InspectField     fields                    = 4;
-  google.protobuf.Struct    extra                     = 5;  // freeform escape hatch
+  string current_step = 1;
+  uint32 pending_permission_count = 2;
+  google.protobuf.Timestamp last_activity_at = 3;
+  repeated InspectField fields = 4;
+  google.protobuf.Struct extra = 5; // freeform escape hatch
   reserved 100 to 999;
 }

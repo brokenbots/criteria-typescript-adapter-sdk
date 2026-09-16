@@ -82,6 +82,50 @@ function randomId(): string {
 /*  TestHost                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How the fake host answers one adapter tool call (or plain permission
+ * request). Parity knob for {@link TestHostOptions.autoGrantPermissions}:
+ *
+ * - `result`: grant the call, then answer with a (possibly chunked)
+ *   `tool_call_result`. Omit `outputs` for a result with no outputs;
+ *   set `callError` for a typed host error; set `chunkBytes` to split
+ *   `outputs` into chunked fragments the way the real host does for
+ *   large payloads.
+ * - `deny`: answer with a cancellation (a denied tool call never sends a
+ *   `tool_call_result`), carrying an optional reason.
+ * - `bare_grant`: only grant, never answer — the old-host signature that
+ *   makes the tool-call helper degrade to `host_unsupported`.
+ * - `silence`: neither grant nor answer — the signature behind the typed
+ *   timeout (no grant arrived, so the session is not cached).
+ */
+export type ToolCallReplay =
+  | {
+      kind: "result";
+      outcome?: string;
+      outputs?: Record<string, unknown>;
+      callError?: string;
+      chunkBytes?: number;
+    }
+  | { kind: "deny"; reason?: string }
+  | { kind: "bare_grant" }
+  /** Nothing at all: not granted, never answered (tests the timeout path). */
+  | { kind: "silence" };
+
+/** Payload of an adapter-sent permission.request event, as seen by the host. */
+export interface ToolCallRequestPayload {
+  kind?: string;
+  request_id?: string;
+  requestId?: string;
+  target?: string;
+  tool?: string;
+  args?: Record<string, unknown>;
+  args_digest?: string;
+  argsDigest?: string;
+  args_preview?: string;
+  argsPreview?: string;
+  [key: string]: unknown;
+}
+
 export class TestHost {
   private binary?: string;
   private config?: ServeConfig;
@@ -97,9 +141,17 @@ export class TestHost {
   private _logStream?: grpc.ClientReadableStream<unknown>;
   private _autoGrantPermissions = false;
   private _permissionDelayMs = 0;
+  private _toolCallResult?: (payload: ToolCallRequestPayload) => ToolCallReplay | Promise<ToolCallReplay>;
   private _onTeardown?: (server: grpc.Server) => void;
 
-  constructor(opts: { binary?: string; config?: ServeConfig; autoGrantPermissions?: boolean; permissionDelayMs?: number; onTeardown?: (server: grpc.Server) => void }) {
+  constructor(opts: {
+    binary?: string;
+    config?: ServeConfig;
+    autoGrantPermissions?: boolean;
+    permissionDelayMs?: number;
+    toolCallResult?: (payload: ToolCallRequestPayload) => ToolCallReplay | Promise<ToolCallReplay>;
+    onTeardown?: (server: grpc.Server) => void;
+  }) {
     if (!opts.binary && !opts.config) {
       throw new Error("TestHost requires either `binary` or `config`");
     }
@@ -107,6 +159,7 @@ export class TestHost {
     this.config = opts.config;
     this._autoGrantPermissions = opts.autoGrantPermissions ?? false;
     this._permissionDelayMs = opts.permissionDelayMs ?? 0;
+    this._toolCallResult = opts.toolCallResult;
     this._onTeardown = opts.onTeardown;
   }
 
@@ -230,15 +283,77 @@ export class TestHost {
         }
         const adapterEvt = evt.adapter as Record<string, unknown> | undefined;
         if (adapterEvt?.eventKind === "permission.request") {
-          const payload = fromProtoStruct(adapterEvt.payload);
-          const reqId = payload.requestId as string | undefined;
-          if (reqId && this._autoGrantPermissions) {
-            if (this._permissionDelayMs > 0) {
-              setTimeout(() => {
+          const payload = fromProtoStruct(adapterEvt.payload) as ToolCallRequestPayload;
+          const reqId = (payload.request_id ?? payload.requestId) as string | undefined;
+          if (reqId) {
+            const grant = () => {
+              if (this._permissionDelayMs > 0) {
+                setTimeout(() => permStream.write({ request: { requestId: reqId } }), this._permissionDelayMs);
+              } else {
                 permStream.write({ request: { requestId: reqId } });
-              }, this._permissionDelayMs);
-            } else {
-              permStream.write({ request: { requestId: reqId } });
+              }
+            };
+            const delayed = (fn: () => void) =>
+              this._permissionDelayMs > 0 ? setTimeout(fn, this._permissionDelayMs) : fn();
+
+            // A configured replay knob governs every permission.request the
+            // adapter sends; without one, autoGrantPermissions grants bare
+            // (which is the old-host signature for adapter tool calls).
+            if (this._toolCallResult) {
+              void Promise.resolve()
+                .then(() => this._toolCallResult!(payload))
+                .then((replay) => {
+                  if (replay.kind === "deny") {
+                    // A denied call never produces a tool_call_result — the
+                    // host answers with a cancellation.
+                    delayed(() =>
+                      permStream.write({ cancel: { requestId: reqId, reason: replay.reason ?? "denied by test" } })
+                    );
+                    return;
+                  }
+                  if (replay.kind === "silence") return;
+                  grant();
+                  if (replay.kind === "bare_grant") return;
+                  const outcome = replay.outcome ?? "";
+                  const callError = replay.callError ?? "";
+                  const outputsJson =
+                    replay.outputs === undefined
+                      ? Buffer.alloc(0)
+                      : Buffer.from(JSON.stringify(replay.outputs), "utf8");
+                  const chunkBytes = replay.chunkBytes;
+                  if (!chunkBytes || chunkBytes <= 0 || outputsJson.length <= chunkBytes) {
+                    delayed(() => permStream.write({ toolCallResult: { requestId: reqId, outcome, callError, outputsJson } }));
+                    return;
+                  }
+                  // Chunked result: split outputs_json into chunkBytes-sized
+                  // fragments, each carrying its Chunk position and its own
+                  // slice of outputs_json (the way the real host streams
+                  // large outputs).
+                  const total = Math.ceil(outputsJson.length / chunkBytes);
+                  for (let seq = 0; seq < total; seq++) {
+                    const slice = outputsJson.subarray(seq * chunkBytes, (seq + 1) * chunkBytes);
+                    const final = seq === total - 1;
+                    delayed(() =>
+                      permStream.write({
+                        toolCallResult: {
+                          requestId: reqId,
+                          outcome,
+                          callError,
+                          outputsJson: slice,
+                          chunk: { seq, total, final },
+                        },
+                      })
+                    );
+                  }
+                })
+                .catch(() => {
+                  // A throwing replay knob must not crash the test run; deny.
+                  delayed(() => permStream.write({ cancel: { requestId: reqId, reason: "toolCallResult replay failed" } }));
+                });
+              return;
+            }
+            if (this._autoGrantPermissions) {
+              grant();
             }
           }
         }
@@ -329,6 +444,20 @@ export class TestHost {
         resolve(undefined);
       });
     });
+  }
+
+  /**
+   * Cancel the Permissions stream from the client side, the way the real
+   * Criteria host does when it tears the stream down. The server-side
+   * Permissions handler then drains every pending permission and in-flight
+   * adapter tool call with its typed stream-closed failure.
+   */
+  cancelPermissionsStream(): void {
+    try {
+      this._permStream?.cancel();
+    } catch {
+      /* already closed */
+    }
   }
 
   /**

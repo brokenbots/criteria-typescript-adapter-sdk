@@ -8,9 +8,9 @@ syntax = "proto3";
 
 package criteria.v2;
 
-option go_package = "github.com/brokenbots/criteria/proto/criteria/v2;criteriav2";
-
 import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/brokenbots/criteria-adapter-proto/criteria/v2;criteriav2";
 
 extend google.protobuf.FieldOptions {
   // sensitive marks a field as carrying secret material.  The host's log
