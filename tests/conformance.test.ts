@@ -5,11 +5,11 @@ import {
   echoConformanceAdapter,
   runConcurrentExecuteConformance,
 } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
-import type { ServeConfig, TestHost } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
+import type { ServeConfig } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
 
 /**
- * A TestHost built here is started by the conformance runner itself (config
- * path); the host path below reuses an already-started host.
+ * A fresh config per run: each conformance run starts its own TestHost from
+ * it (config path); the host-path test reuses an already-started host.
  */
 function echoHostConfig(): ServeConfig {
   return echoConformanceAdapter();
@@ -53,8 +53,13 @@ describe("concurrent-Execute-on-one-session conformance", () => {
       const report = await runConcurrentExecuteConformance({ host, calls: 3 });
       expect(report.ok).toBe(true);
       // The runner did not stop the caller's host: it is still usable.
-      const after = await host.execute({ stepName: "post-run", input: {}, allowedOutcomes: [] });
-      expect(after.outcome).toBe("");
+      const after = await host.execute({
+        stepName: "post-run",
+        input: { call_id: "post-run", outcome: "success", conformance_calls: 1 },
+        allowedOutcomes: ["success"],
+      });
+      expect(after.outcome).toBe("success");
+      expect(after.reason).toBe("post-run");
     } finally {
       await host.stop();
     }

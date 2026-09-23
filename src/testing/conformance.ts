@@ -405,7 +405,13 @@ function driveConformanceExecute(
       if (grantStream && adapterEvt?.eventKind === "permission.request") {
         const payload = fromProtoStruct(adapterEvt.payload) as Record<string, unknown>;
         const requestId = (payload.request_id ?? payload.requestId) as string | undefined;
-        if (requestId) grantStream.write({ request: { requestId } });
+        if (requestId) {
+          try {
+            grantStream.write({ request: { requestId } });
+          } catch {
+            /* grant stream already closed: the pending request hits its timeout */
+          }
+        }
       }
     });
     stream.on("error", (err: unknown) => {
@@ -453,8 +459,6 @@ function validateCallSpecs(specs: ConformanceCallSpec[], opts: { requireDistinct
     seenCallIds.add(spec.callId);
   }
   if (opts.requireDistinct) {
-    const resultKey = (spec: ConformanceCallSpec) =>
-      JSON.stringify([spec.expect.outcome, spec.expect.reason ?? null]);
     const distinct = new Set(specs.map(resultKey));
     if (distinct.size < specs.length) {
       throw new Error(
