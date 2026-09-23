@@ -32,6 +32,25 @@ import * as protoLoader from "@grpc/proto-loader";
 import type { ServeConfig } from "../plugin/types-v2.js";
 import { startServerV2, stopServerV2, fromProtoStruct } from "../plugin/server-v2.js";
 
+export {
+  CONFORMANCE_MIN_CALLS,
+  CONFORMANCE_DEFAULT_CALLS,
+  CONFORMANCE_DEFAULT_CALL_TIMEOUT_MS,
+  ConcurrentExecuteConformanceFailure,
+  echoConformanceCall,
+  echoConformanceAdapter,
+  runConcurrentExecuteConformance,
+  assertConcurrentExecuteOnOneSession,
+} from "./conformance.js";
+export type {
+  ConformanceCallSpec,
+  ConformanceExpectedResult,
+  ConformanceCallObservation,
+  ConformanceViolation,
+  ConformanceReport,
+  ConcurrentExecuteConformanceOptions,
+} from "./conformance.js";
+
 /* -------------------------------------------------------------------------- */
 /*  Proto loading (client side)                                               */
 /* -------------------------------------------------------------------------- */
@@ -211,6 +230,16 @@ export class TestHost {
   /** Ensure started. */
   private async ensureStarted(): Promise<void> {
     if (!this.client) await this.start();
+  }
+
+  /**
+   * The raw gRPC service client, for advanced harness use — raw-RPC drivers
+   * and the conformance cases (see ./conformance.js). Throws when the host
+   * has not been started yet.
+   */
+  get rawClient(): grpc.Client {
+    if (!this.client) throw new Error("TestHost not started: call start() first");
+    return this.client;
   }
 
   /** Open a session. */
