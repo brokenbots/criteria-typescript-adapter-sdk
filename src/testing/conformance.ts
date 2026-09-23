@@ -55,7 +55,9 @@
  * Adapters that cannot follow the echo convention supply their own per-call
  * script via `buildCall` (request + the result that must land on that call's
  * stream). Expected results must be pairwise distinct, or cross-delivery
- * would be undetectable.
+ * would be undetectable. The sequential follow-up (driven by default) is
+ * issued as call index `calls`; its spec must be defined by `buildCall` too
+ * and its expected result counts toward the distinctness requirement.
  */
 
 import type * as grpc from "@grpc/grpc-js";
@@ -66,7 +68,12 @@ import { TestHost } from "./index.js";
 /** The case is defined for N >= 3 concurrent calls; fewer cannot demonstrate per-call correlation. */
 export const CONFORMANCE_MIN_CALLS = 3;
 
-/** Default fan-out size (mirrors the Go/Python SDKs' concurrent-execute conformance). */
+/**
+ * Default fan-out size. Not a direct mirror of the other SDKs' cases (Go's
+ * concurrent-execute conformance defaults to 4 calls; Python's cycles 5
+ * fixed outcomes) — chosen as a comfortably-above-minimum fan-out that
+ * still runs fast.
+ */
 export const CONFORMANCE_DEFAULT_CALLS = 5;
 
 /** Default per-call deadline, covering stream open, result delivery and stream end. */
@@ -96,7 +103,12 @@ export interface ConformanceCallObservation {
   results: { outcome: string; reason?: string }[];
   /** Message of the stream's RPC error, when the call failed before ending cleanly. */
   error?: string;
-  /** True when the deadline passed with no result and no stream error. */
+  /**
+   * True when the per-call deadline passed before the stream ended. With a
+   * delivered result this is diagnostic only (the result is still evaluated
+   * and can satisfy the contract); with no delivered result it is the
+   * "no result within the deadline" violation.
+   */
   timedOut?: boolean;
 }
 
@@ -173,11 +185,19 @@ export class ConcurrentExecuteConformanceFailure extends Error {
  * The default correlation-convention script (see the module doc). Call i
  * sends `input { call_id, outcome, conformance_calls }` and expects its own
  * stream to deliver outcome `ok-<i>` with the echoed `call_id` as the reason.
+ *
  * Every call carries the same allowed-outcomes list, so concurrent calls
- * racing to set the session's allowed set cannot invalidate each other.
+ * racing to set the session's allowed set cannot invalidate each other. The
+ * list spans `calls + 1` outcomes (`ok-0`..`ok-<calls>`): the sequential
+ * follow-up is issued as call index `calls` and finalizes `ok-<calls>`, and
+ * a spec-conformant adapter validates its requested outcome against
+ * `allowed_outcomes` (via `helpers.outcomes.validate`) before finalizing —
+ * omitting the follow-up's outcome would mislabel such an adapter as the
+ * CRI-305 defect class.
  */
 export function echoConformanceCall(i: number, calls: number): ConformanceCallSpec {
-  const allOutcomes = Array.from({ length: calls }, (_, j) => `ok-${j}`);
+  // +1 covers the sequential follow-up call (index `calls`, outcome `ok-<calls>`).
+  const allOutcomes = Array.from({ length: calls + 1 }, (_, j) => `ok-${j}`);
   return {
     callId: `call-${i}`,
     stepName: `conformance-call-${i}`,
@@ -193,27 +213,37 @@ export function echoConformanceCall(i: number, calls: number): ConformanceCallSp
  * back as the finalize reason, holding every finalize behind a barrier until
  * all fan-out calls have arrived on the shared session. Use it to smoke-test
  * conformance wiring, or as the template for an adapter under test.
+ *
+ * The barrier is per session: a returned config can back several conformance
+ * runs (each run opens a fresh session by default), and each run gets its
+ * own barrier — a run's released barrier never leaks into the next one.
  */
 export function echoConformanceAdapter(): ServeConfig {
-  let arrived = 0;
-  let releaseAll!: () => void;
-  const allArrived = new Promise<void>((resolve) => {
-    releaseAll = resolve;
-  });
+  const barriers = new Map<string, { arrived: number; release: () => void; allArrived: Promise<void> }>();
   return {
     name: "conformance-echo-adapter",
     version: "0.0.0",
     description: "reference echo adapter for the concurrent-Execute conformance case",
     async execute(req, helpers) {
       const input = ((req as { input?: Record<string, unknown> }).input ?? {}) as Record<string, unknown>;
+      const sessionId = String((req as { sessionId?: string }).sessionId ?? "");
+      let barrier = barriers.get(sessionId);
+      if (!barrier) {
+        let release!: () => void;
+        const allArrived = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        barrier = { arrived: 0, release, allArrived };
+        barriers.set(sessionId, barrier);
+      }
       const callId = String(input.call_id ?? "");
       const outcome = String(input.outcome ?? "");
       const total = Number(input.conformance_calls ?? 0);
-      arrived += 1;
-      if (total > 0 && arrived >= total) releaseAll();
+      barrier.arrived += 1;
+      if (total > 0 && barrier.arrived >= total) barrier.release();
       // Hold every finalize until ALL fan-out calls have arrived on the
       // shared session (see the module doc for why the overlap matters).
-      await allArrived;
+      await barrier.allArrived;
       // The correlation convention: finalize with the requested outcome and
       // echo the call marker back as the reason.
       await helpers.outcomes.finalize(outcome, { reason: callId });
@@ -244,9 +274,15 @@ export async function runConcurrentExecuteConformance(
     throw new Error(`concurrent-execute conformance: callTimeoutMs must be > 0, got ${callTimeoutMs}`);
   }
   const buildCall = options.buildCall ?? echoConformanceCall;
+  const checkSequential = options.checkSequential ?? true;
 
   const specs = Array.from({ length: calls }, (_, i) => buildCall(i, calls));
-  validateCallSpecs(specs, { requireDistinct: true });
+  // The sequential follow-up (call index `calls`) is driven on the same
+  // session when enabled; it must satisfy the same script rules as the
+  // fan-out — notably pairwise-distinct expected results, so a result
+  // cross-routed onto its stream stays detectable.
+  const sequentialSpec = checkSequential ? buildCall(calls, calls) : undefined;
+  validateCallSpecs(sequentialSpec ? [...specs, sequentialSpec] : specs, { requireDistinct: true });
 
   const ownedHost = !options.host;
   let host: TestHost;
@@ -272,10 +308,9 @@ export async function runConcurrentExecuteConformance(
       violations.push(...evaluateObservations(specs, observations, callTimeoutMs));
 
       let sequential: ConformanceReport["sequential"];
-      if (options.checkSequential ?? true) {
+      if (sequentialSpec) {
         // Sequential behavior must be unchanged by the fan-out: one call,
         // driven alone, still delivers its own result on the same session.
-        const sequentialSpec = buildCall(calls, calls);
         const observation = await driveConformanceExecute(
           client,
           sessionId,
@@ -371,7 +406,6 @@ function driveConformanceExecute(
     };
     const timer = setTimeout(() => {
       observation.timedOut = true;
-      observation.error = observation.error ?? `no result within ${timeoutMs}ms`;
       try {
         stream?.cancel();
       } catch {
@@ -492,24 +526,33 @@ function evaluateObservations(
       violations.push({ callId: spec.callId, message: `${label}: no observation recorded` });
       return;
     }
-    if (observation.timedOut) {
-      violations.push({
-        callId: spec.callId,
-        message: `${label}: no result within the ${callTimeoutMs}ms deadline${observation.error ? ` (${observation.error})` : ""}`,
-      });
+    // Result presence first: a stream that delivered its result but stayed
+    // open past the deadline must not be reported as a timeout — "stream did
+    // not end within the deadline" and "no result delivered" are different
+    // diagnostics, and the contract is per-call result correctness.
+    if (observation.results.length === 0) {
+      if (observation.timedOut) {
+        violations.push({
+          callId: spec.callId,
+          message: `${label}: no result within the ${callTimeoutMs}ms deadline`,
+        });
+      } else if (observation.error) {
+        violations.push({
+          callId: spec.callId,
+          message: `${label}: stream error: ${observation.error}${signatureNote(observation.error)}`,
+        });
+      } else {
+        violations.push({
+          callId: spec.callId,
+          message: `${label}: stream ended with no result — the result was lost ("Execute completed without sending result" class)`,
+        });
+      }
       return;
     }
-    if (observation.error) {
+    if (observation.error && !observation.timedOut) {
       violations.push({
         callId: spec.callId,
         message: `${label}: stream error: ${observation.error}${signatureNote(observation.error)}`,
-      });
-      return;
-    }
-    if (observation.results.length === 0) {
-      violations.push({
-        callId: spec.callId,
-        message: `${label}: stream ended with no result — the result was lost ("Execute completed without sending result" class)`,
       });
       return;
     }
@@ -540,8 +583,11 @@ function evaluateObservations(
   // every call actually delivered a result — otherwise the per-call
   // violations above already name the losses.
   if (observations.length > 0) {
+    // A stream that delivered exactly one result counts even when it then
+    // errored or outlived the deadline: the result WAS delivered, so it must
+    // account for itself in the correlation multiset.
     const delivered = observations
-      .filter((o): o is ConformanceCallObservation => !!o && !o.error && !o.timedOut && o.results.length === 1)
+      .filter((o): o is ConformanceCallObservation => !!o && o.results.length === 1)
       .flatMap((o) => o.results.map((r) => JSON.stringify([r.outcome, r.reason ?? null])))
       .sort();
     if (delivered.length === observations.length) {

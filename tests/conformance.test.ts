@@ -1,8 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import {
+  CONFORMANCE_DEFAULT_CALLS,
   CONFORMANCE_MIN_CALLS,
   assertConcurrentExecuteOnOneSession,
   echoConformanceAdapter,
+  echoConformanceCall,
   runConcurrentExecuteConformance,
 } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
 import type { ServeConfig } from "@brokenbots/criteria-typescript-adapter-sdk/testing";
@@ -36,6 +38,102 @@ describe("concurrent-Execute-on-one-session conformance", () => {
     expect(report.sequential?.results).toHaveLength(1);
     expect(report.sequential?.results[0].outcome).toBe("ok-5");
     expect(report.sequential?.results[0].reason).toBe("call-5");
+  });
+
+  it("passes against a spec-conformant adapter that validates requested outcomes", async () => {
+    // The SDK's documented adapter pattern: check the requested outcome
+    // against allowed_outcomes (helpers.outcomes.validate) before finalizing.
+    // The default script's allowed list must cover the sequential follow-up's
+    // outcome (ok-<calls>) — omitting it mislabeled a conformant adapter as
+    // the CRI-305 defect class ("Execute completed without sending result").
+    const config: ServeConfig = {
+      name: "conformance-validating-adapter",
+      version: "0.0.0",
+      description: "adapter that validates the requested outcome before finalizing",
+      async execute(req, helpers) {
+        const input = ((req as { input?: Record<string, unknown> }).input ?? {}) as Record<string, unknown>;
+        const requested = String(input.outcome ?? "");
+        const callId = String(input.call_id ?? "");
+        const check = await helpers.outcomes.validate(requested);
+        if (!check.valid) {
+          await helpers.outcomes.finalize("failure", { reason: callId });
+          return;
+        }
+        await helpers.outcomes.finalize(requested, { reason: callId });
+      },
+    };
+    const report = await runConcurrentExecuteConformance({ config, calls: 5 });
+
+    expect(report.ok).toBe(true);
+    expect(report.violations).toEqual([]);
+    expect(report.sequential?.ok).toBe(true);
+    expect(report.sequential?.results[0].outcome).toBe("ok-5");
+  });
+
+  describe("default script self-consistency", () => {
+    it("keeps every generated spec's expected outcome inside its allowedOutcomes", () => {
+      for (const calls of [CONFORMANCE_MIN_CALLS, CONFORMANCE_DEFAULT_CALLS, 8]) {
+        // Concurrent specs 0..calls-1 plus the sequential follow-up at index calls.
+        const specs = Array.from({ length: calls + 1 }, (_, i) => echoConformanceCall(i, calls));
+        for (const spec of specs) {
+          expect(spec.allowedOutcomes).toContain(spec.expect.outcome);
+        }
+        // Expectations stay pairwise distinct, so cross-delivery is detectable.
+        const keys = new Set(specs.map((s) => JSON.stringify([s.expect.outcome, s.expect.reason ?? null])));
+        expect(keys.size).toBe(calls + 1);
+      }
+    });
+  });
+
+  it("reuses one returned config across runs (per-run overlap barrier)", async () => {
+    // The overlap barrier must not leak between runs: reusing one returned
+    // ServeConfig for a second run must not inherit the first run's released
+    // barrier (which would silently drop the second run's overlap shape).
+    const config = echoConformanceAdapter();
+    for (let run = 0; run < 2; run++) {
+      const report = await runConcurrentExecuteConformance({ config, calls: 5 });
+      expect(report.ok).toBe(true);
+      expect(report.violations).toEqual([]);
+      expect(report.sequential?.ok).toBe(true);
+    }
+  });
+
+  it("does not report a timeout when the stream delivered its result but stayed open", async () => {
+    // A handler that finalizes correctly and then never resolves keeps each
+    // stream open past the deadline. The contract is per-call result
+    // correctness: the delivered result satisfies it, so the run must pass —
+    // while the overdue streams stay recorded as per-call diagnostics.
+    let arrived = 0;
+    let releaseAll!: () => void;
+    const allArrived = new Promise<void>((resolve) => {
+      releaseAll = resolve;
+    });
+    const config: ServeConfig = {
+      name: "conformance-finalize-then-hang-adapter",
+      version: "0.0.0",
+      description: "adapter that finalizes correctly but never lets its stream end",
+      async execute(req, helpers) {
+        const input = ((req as { input?: Record<string, unknown> }).input ?? {}) as Record<string, unknown>;
+        arrived += 1;
+        if (arrived >= 3) releaseAll();
+        await allArrived;
+        await helpers.outcomes.finalize(String(input.outcome), { reason: String(input.call_id) });
+        await new Promise<void>(() => {});
+      },
+    };
+    const report = await runConcurrentExecuteConformance({
+      config,
+      calls: 3,
+      callTimeoutMs: 1500,
+      checkSequential: false,
+    });
+    expect(report.ok).toBe(true);
+    expect(report.violations).toEqual([]);
+    for (const [i, obs] of report.calls.entries()) {
+      expect(obs.timedOut).toBe(true);
+      expect(obs.results).toHaveLength(1);
+      expect(obs.results[0].outcome).toBe(`ok-${i}`);
+    }
   });
 
   it("passes via the assert helper at the minimum fan-out size", async () => {
@@ -93,7 +191,8 @@ describe("concurrent-Execute-on-one-session conformance", () => {
         callId: `probe-${i}`,
         stepName: `probe-${i}`,
         input: { call_id: `probe-${i}`, outcome: `pass-${i}`, conformance_calls: calls },
-        allowedOutcomes: Array.from({ length: calls }, (_, j) => `pass-${j}`),
+        // +1 covers the sequential follow-up at index `calls` (pass-<calls>).
+        allowedOutcomes: Array.from({ length: calls + 1 }, (_, j) => `pass-${j}`),
         expect: { outcome: `pass-${i}`, reason: `probe-${i}` },
       }),
     });
@@ -104,6 +203,8 @@ describe("concurrent-Execute-on-one-session conformance", () => {
       "pass-2",
       "pass-3",
     ]);
+    expect(report.sequential?.ok).toBe(true);
+    expect(report.sequential?.results[0].outcome).toBe("pass-4");
   });
 
   it("skips the sequential check when asked", async () => {
@@ -348,6 +449,26 @@ describe("concurrent-Execute-on-one-session conformance", () => {
             input: {},
             allowedOutcomes: [],
             expect: { outcome: "same" },
+          }),
+        }),
+      ).rejects.toThrow(/pairwise distinct/);
+    });
+
+    it("rejects a script whose sequential follow-up collides with a fan-out expectation", async () => {
+      // The sequential spec (buildCall(calls, calls)) is driven on the same
+      // session and counts toward the distinctness rule: its expected result
+      // must differ from every fan-out call's, or cross-delivery onto its
+      // stream would be undetectable.
+      await expect(
+        runConcurrentExecuteConformance({
+          config: echoConfig,
+          calls: 3,
+          buildCall: (i) => ({
+            callId: `call-${i}`,
+            stepName: `s-${i}`,
+            input: {},
+            allowedOutcomes: [],
+            expect: { outcome: "same", reason: `call-${Math.min(i, 2)}` },
           }),
         }),
       ).rejects.toThrow(/pairwise distinct/);
