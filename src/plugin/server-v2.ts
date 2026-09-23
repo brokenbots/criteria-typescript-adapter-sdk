@@ -130,7 +130,6 @@ interface SessionState {
   secrets: Map<string, string>;
   allowedOutcomes: string[];
   logStream?: grpc.ServerWritableStream<unknown, unknown>;
-  executeStream?: grpc.ServerWritableStream<unknown, unknown>;
   permissionsStream?: grpc.ServerDuplexStream<unknown, unknown>;
   pendingPermissions: Map<string, PendingPerm>;
   pendingToolCalls: Map<string, PendingToolCall>;
@@ -139,6 +138,26 @@ interface SessionState {
   // adapter tools (ADR-0004 §9), so later calls fail fast without sending.
   toolCallsUnsupported: boolean;
   logBuffer: unknown[];
+}
+
+/**
+ * Per-Execute-call result-delivery state (CRI-305).
+ *
+ * A host running adapter-target parallel steps multiplexes several concurrent
+ * Execute calls over ONE wire session, so result delivery must be tracked per
+ * call, never on the session: a shared executeStream pointer is overwritten by
+ * every arriving Execute (cross-routing one iteration's result onto another
+ * iteration's stream) and a shared finalized flag makes the second finalize
+ * throw "Result already sent" while a call finishing without having sent
+ * surfaces as "adapter execute stream ended without result".
+ *
+ * stream carries this call's own Execute stream — the channel the result,
+ * adapter events and permission requests of THIS iteration are written to.
+ * Handlers without an Execute stream (OpenSession/Snapshot/Restore/
+ * CloseSession) pass the default context, whose writes are dropped.
+ */
+interface ExecuteContext {
+  stream?: grpc.ServerWritableStream<unknown, unknown>;
   finalized: boolean;
 }
 
@@ -160,7 +179,6 @@ function ensureSession(sessionId: string): SessionState {
       pendingToolCalls: new Map(),
       toolCallsUnsupported: false,
       logBuffer: [],
-      finalized: false,
     };
     sessions.set(sessionId, s);
   }
@@ -240,7 +258,11 @@ function settleToolCall(entry: PendingToolCall): void {
 
 // ─── Helpers factory ─────────────────────────────────────────────────────────
 
-function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
+function createHelpers(
+  _config: ServeConfig,
+  session: SessionState,
+  exec: ExecuteContext = { finalized: false },
+): Helpers {
   const sessionStore: SessionStore = {
     get<T>(key: string): T | undefined {
       return session.store.get(key) as T | undefined;
@@ -264,10 +286,10 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
       return { valid: true };
     },
     async finalize(outcome: string, opts?: { reason?: string }): Promise<void> {
-      if (session.finalized) {
+      if (exec.finalized) {
         throw new Error('Result already sent');
       }
-      session.finalized = true;
+      exec.finalized = true;
       const outputsMap: Record<string, unknown> = {
         reason: opts?.reason ?? '',
       };
@@ -277,8 +299,8 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
           outputsJson: Buffer.from(JSON.stringify(outputsMap)),
         },
       };
-      if (session.executeStream) {
-        session.executeStream.write(event);
+      if (exec.stream) {
+        exec.stream.write(event);
       }
     },
   };
@@ -319,8 +341,8 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
           payload: data ? toProtoStruct(data) : undefined,
         },
       };
-      if (session.executeStream) {
-        session.executeStream.write(event);
+      if (exec.stream) {
+        exec.stream.write(event);
       }
     },
   };
@@ -349,8 +371,8 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
           }),
         },
       };
-      if (session.executeStream) {
-        session.executeStream.write(event);
+      if (exec.stream) {
+        exec.stream.write(event);
       }
 
       // Wait for PermissionEvent from host via Permissions stream
@@ -470,13 +492,13 @@ function createHelpers(_config: ServeConfig, session: SessionState): Helpers {
         }, timeoutMs);
 
         session.pendingToolCalls.set(requestId, entry);
-        if (!session.executeStream) {
+        if (!exec.stream) {
           session.pendingToolCalls.delete(requestId);
           entry.reject(new Error('adapter tool call requires an open Execute stream'));
           return;
         }
         try {
-          session.executeStream.write({
+          exec.stream.write({
             adapter: {
               eventKind: EVENT_KIND_PERMISSION_REQUEST,
               payload: toProtoStruct({
@@ -682,9 +704,12 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
           return;
         }
 
-        session.executeStream = call;
+        // Result delivery is per Execute call (CRI-305): concurrent Executes
+        // multiplexed onto one session each get their own stream and
+        // finalized flag, so an arriving Execute can no longer steal a prior
+        // iteration's result channel.
+        const exec: ExecuteContext = { stream: call, finalized: false };
         session.logBuffer = [];
-        session.finalized = false;
 
         // Flush buffered log events once Log stream arrives
         const flushLogs = () => {
@@ -712,11 +737,11 @@ export function startServerV2(config: ServeConfig, opts: StartServerV2Options = 
           allowedOutcomes,
         };
 
-        const helpers = createHelpers(config, session);
+        const helpers = createHelpers(config, session, exec);
 
         config.execute(executeReq as any, helpers)
           .then(() => {
-            if (!session.finalized) {
+            if (!exec.finalized) {
               call.emit('error', new Error('Execute completed without sending result'));
             }
           })
